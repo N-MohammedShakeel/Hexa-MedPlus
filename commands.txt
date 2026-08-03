@@ -1,0 +1,10 @@
+docker-compose down
+docker-compose -f docker-compose.insfra.yml up -d
+mvn spring-boot:run "-Dspring-boot.run.profiles=local"
+npm run dev
+uvicorn main:app --host 0.0.0.0 --port 8083 --reload
+
+mvn clean compile jib:dockerBuild
+mvn clean compile jib:buildTar
+
+docker-compose up -d

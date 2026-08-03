@@ -1,0 +1,27 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: document-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/hexa_medplus_db
+    username: hexa_admin
+    password: hexa_secure_2024
+  jpa:
+    hibernate:
+      ddl-auto: update
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+minio:
+  endpoint: http://minio:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket-name: clinical-documents
+
+document-service:
+  public-url: http://document-service:8082

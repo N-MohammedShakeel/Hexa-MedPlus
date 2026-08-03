@@ -1,0 +1,28 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+  cloud:
+    gateway:
+      routes:
+        - id: clinical-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/patients/**, /api/encounters/**, /api/notes/**, /api/analytics/**, /api/clinical/**
+        - id: document-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/documents/**
+        - id: ai-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/ai/**
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:5173"
+              - "http://localhost:3000"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true

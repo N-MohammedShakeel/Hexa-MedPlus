@@ -1,0 +1,132 @@
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { loginStart, loginSuccess } from "../../../store/slices/authSlice";
+import Button from "../../../components/ui/Button";
+import Input from "../../../components/ui/Input";
+import { Mail, Lock, ArrowRight } from "lucide-react";
+
+export default function LoginPage() {
+    const dispatch = useDispatch();
+    const { loading } = useSelector((state) => state.auth);
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [rememberMe, setRememberMe] = useState(false);
+    const [localError, setLocalError] = useState(null);
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        dispatch(loginStart());
+        setLocalError(null);
+        
+        try {
+            const { default: axiosInstance } = await import('../../../config/axios');
+            const response = await axiosInstance.post('/api/auth/login', {
+                username: email, // AuthController expects username
+                password: password,
+                rememberMe: rememberMe
+            });
+
+            const { token, username, role, fullName, title, registrationNumber, hprId, facility, department, bio, employeeId } = response.data;
+            
+            const userObj = { 
+                name: username, 
+                email: email, 
+                role, 
+                fullName, 
+                title, 
+                registrationNumber, 
+                hprId, 
+                facility, 
+                department, 
+                bio, 
+                employeeId 
+            };
+            
+            localStorage.setItem("jwt_token", token);
+            localStorage.setItem("user", JSON.stringify(userObj));
+            
+            dispatch(loginSuccess({
+                user: userObj,
+                token: token
+            }));
+            
+            navigate("/patients");
+        } catch (error) {
+            console.error("Login failed", error);
+            setLocalError("Invalid credentials or server unavailable.");
+            dispatch({ type: "auth/loginFailure", payload: error.message });
+        }
+    };
+
+    return (
+        <div>
+            <h2 className="text-3xl font-bold text-neutral-900 mb-2">Welcome Back</h2>
+            <p className="text-neutral-600 mb-8 leading-relaxed">
+                Enter your credentials to access the Hexa MedPlus clinical workspace.
+            </p>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <Input
+                    label="Email Address"
+                    type="email"
+                    placeholder="doctor@hospital.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    leftIcon={Mail}
+                    required
+                />
+
+                <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-neutral-800">Password</label>
+                        <a href="#" className="text-xs font-semibold text-primary-600 hover:underline">
+                            Forgot password?
+                        </a>
+                    </div>
+                    <Input
+                        type="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        leftIcon={Lock}
+                        required
+                    />
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <input 
+                            type="checkbox" 
+                            id="remember" 
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                            className="w-4 h-4 rounded border-neutral-400 text-primary-600 focus:ring-primary-500" 
+                        />
+                        <label htmlFor="remember" className="text-sm font-medium text-neutral-700">Remember me for 30 days</label>
+                    </div>
+                </div>
+
+                <Button 
+                    type="submit" 
+                    size="lg" 
+                    className="w-full mt-2" 
+                    icon={loading ? undefined : ArrowRight}
+                    disabled={loading}
+                >
+                    {loading ? "Authenticating..." : "Sign in to Workspace"}
+                </Button>
+            </form>
+
+            <div className="mt-8 pt-8 border-t border-neutral-200">
+                <p className="text-center text-sm text-neutral-600">
+                    Don't have an account?{" "}
+                    <a href="mailto:nmohammedshakeel21@gmail.com?subject=Hexa%20MedPlus%20-%20Access%20Request" className="font-semibold text-primary-600 hover:underline">
+                        Request access
+                    </a>
+                </p>
+            </div>
+        </div>
+    );
+}
