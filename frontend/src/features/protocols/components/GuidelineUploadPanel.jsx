@@ -1,19 +1,9 @@
 import React, { useState, useRef } from "react";
 import { Loader2, Upload, Brain } from "lucide-react";
 import axiosInstance from "../../../config/axios";
+import { SPECIALTY_TAGS } from "../constants";
 
-const SPECIALTY_TAGS = [
-  "All",
-  "Cardiology",
-  "Emergency",
-  "Neurology",
-  "Oncology",
-  "Endocrinology",
-  "Pulmonology",
-  "General Medicine",
-];
-
-export default function GuidelineUploadPanel({ onUploadSuccess }) {
+export default function GuidelineUploadPanel({ onUploadSuccess, existingProtocols = [] }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState([]);
@@ -21,7 +11,6 @@ export default function GuidelineUploadPanel({ onUploadSuccess }) {
   const [title, setTitle] = useState("");
   const [specialty, setSpecialty] = useState("General Medicine");
   const [mrnInput, setMrnInput] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
   const fileInputRef = useRef(null);
   const eventSourceRef = useRef(null);
 
@@ -32,11 +21,19 @@ export default function GuidelineUploadPanel({ onUploadSuccess }) {
     setTitle("");
     setSpecialty("General Medicine");
     setMrnInput("");
-    setExpiryDate("");
   };
 
   const doUpload = async (file) => {
     if (!file) return;
+
+    const duplicate = existingProtocols.find((p) => !p.isRetired && p.fileName === file.name);
+    if (duplicate) {
+      const proceed = window.confirm(
+        `A protocol named "${duplicate.title}" already exists and appears active. Upload as a new, unrelated document anyway?\n\nIf this is a revision of the existing protocol, cancel and use "Supersede" on it instead.`
+      );
+      if (!proceed) return;
+    }
+
     setUploading(true);
     setUploadDone(false);
     setUploadProgress(["Initiating secure upload..."]);
@@ -65,7 +62,6 @@ export default function GuidelineUploadPanel({ onUploadSuccess }) {
       formData.append("documentType", "GUIDELINE");
       formData.append("mrn", mrnInput || "HOSPITAL_WIDE");
       formData.append("specialty", specialty);
-      if (expiryDate) formData.append("expiryDate", expiryDate);
 
       await axiosInstance.post(`/api/documents?jobId=${jobId}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -169,17 +165,6 @@ export default function GuidelineUploadPanel({ onUploadSuccess }) {
                 <option key={s}>{s}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">
-              Expiry Date <span className="text-neutral-400">(optional — auto-retires this guideline when reached)</span>
-            </label>
-            <input
-              type="date"
-              value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-700 rounded-lg focus:outline-none focus:border-primary-500 text-neutral-900 dark:text-slate-200"
-            />
           </div>
         </div>
       )}

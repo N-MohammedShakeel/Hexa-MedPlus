@@ -32,7 +32,6 @@ public class PatientTagNoteService {
                 .customTag(request.getCustomTag())
                 .content(request.getContent())
                 .status(request.getStatus() != null ? request.getStatus() : "Active")
-                .comment(request.getComment())
                 .build();
         return toResponse(repository.save(entity));
     }
@@ -44,6 +43,7 @@ public class PatientTagNoteService {
         if (update.getStatus() != null) {
             entity.setStatus(update.getStatus());
         }
+        // Save doctor comment if provided
         if (update.getComment() != null) {
             entity.setComment(update.getComment());
         }
@@ -54,10 +54,11 @@ public class PatientTagNoteService {
     public void deleteNote(String mrn, String noteId) {
         PatientTagNoteEntity entity = repository.findById(UUID.fromString(noteId))
                 .orElseThrow(() -> new RuntimeException("Note not found: " + noteId));
+        // Security: verify it actually belongs to this MRN
         if (!entity.getPatientMrn().equals(mrn)) {
-            throw new RuntimeException("Note does not belong to patient: " + mrn);
+            throw new RuntimeException("Note does not belong to patient " + mrn);
         }
-        repository.deleteById(entity.getId());
+        repository.delete(entity);
     }
 
     private PatientNoteDto.Response toResponse(PatientTagNoteEntity e) {
@@ -67,8 +68,8 @@ public class PatientTagNoteService {
                 .tag(e.getTag())
                 .customTag(e.getCustomTag())
                 .content(e.getContent())
-                .status(e.getStatus())
                 .comment(e.getComment())
+                .status(e.getStatus())
                 .createdAt(e.getCreatedAt())
                 .updatedAt(e.getUpdatedAt())
                 .build();

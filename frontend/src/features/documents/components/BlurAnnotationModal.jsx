@@ -3,7 +3,7 @@ import { AlertCircle, X } from 'lucide-react';
 import { Button } from '../../../components/ui';
 import axiosInstance from '../../../config/axios';
 
-export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, docBlobUrl, onClose, analyzingStates, setAnalyzingStates, onAnalysisStarted, onAnalysisComplete }) {
+export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, docBlobUrl, onClose, analyzingStates, setAnalyzingStates }) {
   const regions = docAiResult?.blurryRegions || [];
   const imageWidth = docAiResult?.imageWidth || 1;
   const imageHeight = docAiResult?.imageHeight || 1;
@@ -23,10 +23,6 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalyzingStates(prev => ({ ...prev, [docAiResult.id]: { isAnalyzing: true, inputs } }));
-    // Notify parent that reanalysis started — switches modal to DocumentViewModal with loading
-    if (onAnalysisStarted) onAnalysisStarted(doc.fileKey, docAiResult.id);
-    // Close modal immediately so user isn't stuck waiting
-    onClose();
     try {
       const res = await axiosInstance.post(`/api/ai/vision/results/${docAiResult.id}/reanalyze`, { 
         fileUrl: doc.url,
@@ -40,9 +36,7 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
         needs_blur_annotation: false,
         blurDoctorInputs: inputs,
         extractedText: res.data.extractedText,
-        reportSummary: res.data.reportSummary,
         clinicalFindings: res.data.clinicalFindings,
-        aiHeading: res.data.aiHeading,
         imageWidth: res.data.imageWidth,
         imageHeight: res.data.imageHeight,
         verified: false
@@ -50,11 +44,9 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
     } catch (e) {
       console.error('Failed to reanalyze document', e);
-      alert('Analysis failed. Please try re-opening the document and trying again.');
+      alert('Failed to start analysis.');
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
-    } finally {
-      // Always notify parent that analysis finished (success or fail)
-      if (onAnalysisComplete) onAnalysisComplete(doc.fileKey);
+      setIsAnalyzing(false);
     }
   };
 

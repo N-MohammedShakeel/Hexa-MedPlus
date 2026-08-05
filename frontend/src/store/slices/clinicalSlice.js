@@ -1,42 +1,7 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createSlice } from "@reduxjs/toolkit";
 import { clinicalService } from "../../services/api/clinicalService";
-
-// Async Thunks
-export const fetchAiSummary = createAsyncThunk(
-  "clinical/fetchAiSummary",
-  async (requestBody, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.getAiSummary(requestBody);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to fetch AI summary");
-    }
-  }
-);
-
-export const fetchAiCodes = createAsyncThunk(
-  "clinical/fetchAiCodes",
-  async (requestBody, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.getAiCodes(requestBody);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to fetch AI codes");
-    }
-  }
-);
-
-export const fetchProtocolMatch = createAsyncThunk(
-  "clinical/fetchProtocolMatch",
-  async (query, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.getProtocolMatch(query);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to fetch protocol match");
-    }
-  }
-);
+import { toast } from "react-toastify";
+import { notificationActions } from "./notificationSlice";
 
 const initialState = {
     isAiLoading: false,
@@ -53,6 +18,21 @@ const clinicalSlice = createSlice({
     name: "clinical",
     initialState,
     reducers: {
+        setAiLoading(state, action) {
+            state.isAiLoading = action.payload;
+        },
+        setProtocolLoading(state, action) {
+            state.isProtocolLoading = action.payload;
+        },
+        setError(state, action) {
+            state.error = action.payload;
+        },
+        setAiSummary(state, action) {
+            state.aiSummary = action.payload;
+        },
+        setProtocolMatch(state, action) {
+            state.protocolMatch = action.payload;
+        },
         setActiveAiTab: (state, action) => {
             state.activeAiTab = action.payload;
         },
@@ -66,7 +46,6 @@ const clinicalSlice = createSlice({
         },
         appendProtocolToPlan: (state, action) => {
             if (state.aiSummary && state.aiSummary.plan) {
-                // Append the steps to the existing plan
                 const steps = action.payload.join("\n- ");
                 state.aiSummary.plan += `\n\n[PROTOCOL OVERRIDE APPLIED]:\n- ${steps}`;
             }
@@ -79,54 +58,65 @@ const clinicalSlice = createSlice({
             state.error = null;
         },
         setAiGenerating: (state, action) => {
-            state.pendingAiEncounterId = action.payload; // encounterId or null
+            state.pendingAiEncounterId = action.payload;
         },
-    },
-    extraReducers: (builder) => {
-      builder
-        // fetchAiSummary
-        .addCase(fetchAiSummary.pending, (state) => {
-          state.isAiLoading = true;
-          state.error = null;
-        })
-        .addCase(fetchAiSummary.fulfilled, (state, action) => {
-          state.isAiLoading = false;
-          state.aiSummary = action.payload;
-        })
-        .addCase(fetchAiSummary.rejected, (state, action) => {
-          state.isAiLoading = false;
-          state.error = action.payload;
-        })
-        // fetchAiCodes
-        .addCase(fetchAiCodes.pending, (state) => {
-          state.isAiLoading = true;
-          state.error = null;
-        })
-        .addCase(fetchAiCodes.fulfilled, (state, action) => {
-          state.isAiLoading = false;
-          // The backend returns { suggestedCodes: [...] }
-          state.suggestedCodes = action.payload.suggestedCodes || [];
-        })
-        .addCase(fetchAiCodes.rejected, (state, action) => {
-          state.isAiLoading = false;
-          state.error = action.payload;
-        })
-        // fetchProtocolMatch
-        .addCase(fetchProtocolMatch.pending, (state) => {
-          state.isProtocolLoading = true;
-          state.error = null;
-        })
-        .addCase(fetchProtocolMatch.fulfilled, (state, action) => {
-          state.isProtocolLoading = false;
-          state.protocolMatch = action.payload;
-        })
-        .addCase(fetchProtocolMatch.rejected, (state, action) => {
-          state.isProtocolLoading = false;
-          state.error = action.payload;
-        });
     }
 });
 
+export const clinicalActions = clinicalSlice.actions;
+
+export const fetchAiSummary = (requestBody) => {
+  return async (dispatch) => {
+    try {
+      dispatch(clinicalActions.setAiLoading(true));
+      const response = await clinicalService.getAiSummary(requestBody);
+      dispatch(clinicalActions.setAiSummary(response));
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to fetch AI summary";
+      dispatch(clinicalActions.setError(errorMsg));
+      toast.error("Failed to fetch AI summary");
+      setTimeout(() => dispatch(clinicalActions.setError(null)), 3000);
+    } finally {
+      dispatch(clinicalActions.setAiLoading(false));
+    }
+  };
+};
+
+export const fetchAiCodes = (requestBody) => {
+  return async (dispatch) => {
+    try {
+      dispatch(clinicalActions.setAiLoading(true));
+      const response = await clinicalService.getAiCodes(requestBody);
+      dispatch(clinicalActions.setSuggestedCodes(response.suggestedCodes || []));
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to fetch AI codes";
+      dispatch(clinicalActions.setError(errorMsg));
+      toast.error("Failed to fetch AI codes");
+      setTimeout(() => dispatch(clinicalActions.setError(null)), 3000);
+    } finally {
+      dispatch(clinicalActions.setAiLoading(false));
+    }
+  };
+};
+
+export const fetchProtocolMatch = (query) => {
+  return async (dispatch) => {
+    try {
+      dispatch(clinicalActions.setProtocolLoading(true));
+      const response = await clinicalService.getProtocolMatch(query);
+      dispatch(clinicalActions.setProtocolMatch(response));
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to fetch protocol match";
+      dispatch(clinicalActions.setError(errorMsg));
+      toast.error("Failed to fetch protocol match");
+      setTimeout(() => dispatch(clinicalActions.setError(null)), 3000);
+    } finally {
+      dispatch(clinicalActions.setProtocolLoading(false));
+    }
+  };
+};
+
+// Aliased exports to avoid breaking changes where possible, or if components import these specific actions
 export const {
     setActiveAiTab,
     updateCodeStatus,

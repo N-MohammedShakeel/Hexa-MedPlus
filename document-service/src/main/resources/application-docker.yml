@@ -25,3 +25,6 @@ minio:
 
 document-service:
   public-url: http://document-service:8082
+
+ai-service:
+  url: http://ai-service:8083

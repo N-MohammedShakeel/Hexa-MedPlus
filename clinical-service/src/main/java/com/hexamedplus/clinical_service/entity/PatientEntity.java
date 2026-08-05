@@ -58,4 +58,7 @@ public class PatientEntity {
 
     @Column(name = "archived_at")
     private LocalDateTime archivedAt;
+
+    @Column(name = "unarchived_at")
+    private LocalDateTime unarchivedAt;
 }

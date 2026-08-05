@@ -5,6 +5,7 @@ import { loginStart, loginSuccess } from "../../../store/slices/authSlice";
 import Button from "../../../components/ui/Button";
 import Input from "../../../components/ui/Input";
 import { Mail, Lock, ArrowRight } from "lucide-react";
+import { logLoginSuccess, logLoginFailed } from "../../../services/api/auditService";
 
 export default function LoginPage() {
     const dispatch = useDispatch();
@@ -51,10 +52,15 @@ export default function LoginPage() {
                 user: userObj,
                 token: token
             }));
+
+            // AUDIT: Log successful login
+            logLoginSuccess(username || email);
             
             navigate("/patients");
         } catch (error) {
             console.error("Login failed", error);
+            // AUDIT: Log failed login attempt
+            logLoginFailed(email);
             setLocalError("Invalid credentials or server unavailable.");
             dispatch({ type: "auth/loginFailure", payload: error.message });
         }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axiosInstance from '../../config/axios';
-import { API_ENDPOINTS } from '../../common/constants/apiEndpoints';
+import { API_ENDPOINTS } from '../constants/apiEndpoints';
 
 export function usePatientEncounters(patientId) {
     const [encounters, setEncounters] = useState([]);

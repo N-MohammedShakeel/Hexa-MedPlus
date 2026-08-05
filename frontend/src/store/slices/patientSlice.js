@@ -1,66 +1,7 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createSlice } from "@reduxjs/toolkit";
 import { clinicalService } from "../../services/api/clinicalService";
-
-// Async Thunks
-export const fetchPatients = createAsyncThunk(
-  "patients/fetchPatients",
-  async (_, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.getPatients();
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to fetch patients");
-    }
-  }
-);
-
-export const addNewPatient = createAsyncThunk(
-  "patients/addNewPatient",
-  async (patientData, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.createPatient(patientData);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to add patient");
-    }
-  }
-);
-
-export const fetchArchivedPatients = createAsyncThunk(
-  "patients/fetchArchivedPatients",
-  async (_, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.getPatients(true);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to fetch archived patients");
-    }
-  }
-);
-
-export const archivePatient = createAsyncThunk(
-  "patients/archivePatient",
-  async (id, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.archivePatient(id);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to archive patient");
-    }
-  }
-);
-
-export const unarchivePatient = createAsyncThunk(
-  "patients/unarchivePatient",
-  async (id, { rejectWithValue }) => {
-    try {
-      const data = await clinicalService.unarchivePatient(id);
-      return data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data || "Failed to unarchive patient");
-    }
-  }
-);
+import { notificationActions } from "./notificationSlice";
+import { toast } from "react-toastify";
 
 const mapPatient = (p) => ({
   id: p.id,
@@ -71,80 +12,191 @@ const mapPatient = (p) => ({
   status: p.status || "Active",
   department: p.department || "General",
   lastVisit: p.admissionDate ? p.admissionDate.split("T")[0] : "N/A",
-  primaryDiagnosis: p.allergies || "None", // Mock mapping for UI
+  primaryDiagnosis: p.allergies || "None", 
   alerts: 0,
   archived: !!p.archived,
   archivedAt: p.archivedAt || null,
+  unarchivedAt: p.unarchivedAt || null,
 });
-
-const initialState = {
-  patientsList: [],
-  status: "idle", // 'idle' | 'loading' | 'succeeded' | 'failed'
-  error: null,
-  archivedList: [],
-  archivedStatus: "idle",
-};
 
 const patientSlice = createSlice({
   name: "patients",
-  initialState,
-  reducers: {
-    addPatient: (state, action) => {
-      // Legacy optimistic update logic - now handled by addNewPatient extraReducer
-    },
-    updatePatient: (state, action) => {
-      const index = state.patientsList.findIndex((p) => p.id === action.payload.id);
-      if (index !== -1) {
-        state.patientsList[index] = { ...state.patientsList[index], ...action.payload };
-      }
-    },
-    deletePatient: (state, action) => {
-      state.patientsList = state.patientsList.filter((p) => p.id !== action.payload);
-    }
+  initialState: {
+    patientsList: [],
+    archivedList: [],
+    patientsStatus: 'idle',
+    archivedStatus: 'idle',
+    loading: false,
+    error: null,
   },
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchPatients.pending, (state) => {
-        state.status = "loading";
-      })
-      .addCase(fetchPatients.fulfilled, (state, action) => {
-        state.status = "succeeded";
-        state.patientsList = action.payload.map(mapPatient);
-      })
-      .addCase(fetchPatients.rejected, (state, action) => {
-        state.status = "failed";
-        state.error = action.payload;
-      })
-      .addCase(addNewPatient.fulfilled, (state, action) => {
-        state.patientsList.unshift(mapPatient(action.payload));
-      })
-      .addCase(fetchArchivedPatients.pending, (state) => {
-        state.archivedStatus = "loading";
-      })
-      .addCase(fetchArchivedPatients.fulfilled, (state, action) => {
-        state.archivedStatus = "succeeded";
-        state.archivedList = action.payload.map(mapPatient);
-      })
-      .addCase(fetchArchivedPatients.rejected, (state, action) => {
-        state.archivedStatus = "failed";
-        state.error = action.payload;
-      })
-      .addCase(archivePatient.fulfilled, (state, action) => {
-        state.patientsList = state.patientsList.filter(p => p.id !== action.payload.id);
-        state.archivedList.unshift(mapPatient(action.payload));
-      })
-      .addCase(unarchivePatient.fulfilled, (state, action) => {
-        state.archivedList = state.archivedList.filter(p => p.id !== action.payload.id);
-        state.patientsList.unshift(mapPatient(action.payload));
-      });
-  }
+  reducers: {
+    setLoading(state, action) {
+      state.loading = action.payload;
+    },
+    setPatientsStatus(state, action) {
+      state.patientsStatus = action.payload;
+    },
+    setArchivedStatus(state, action) {
+      state.archivedStatus = action.payload;
+    },
+    setError(state, action) {
+      state.error = action.payload;
+    },
+    setPatientsList(state, action) {
+      state.patientsList = action.payload.map(mapPatient);
+    },
+    setArchivedList(state, action) {
+      state.archivedList = action.payload.map(mapPatient);
+    },
+    addPatient(state, action) {
+      state.patientsList.unshift(mapPatient(action.payload));
+    },
+    removePatientFromList(state, action) {
+      state.patientsList = state.patientsList.filter((p) => p.id !== action.payload.id);
+    },
+    addArchivedPatient(state, action) {
+      state.archivedList.unshift(mapPatient(action.payload));
+    },
+    removeArchivedPatient(state, action) {
+      state.archivedList = state.archivedList.filter((p) => p.id !== action.payload.id);
+    },
+  },
 });
 
-export const { addPatient, updatePatient, deletePatient } = patientSlice.actions;
+export const patientActions = patientSlice.actions;
+
+export const fetchPatients = () => {
+  return async (dispatch) => {
+    try {
+      dispatch(patientActions.setLoading(true));
+      dispatch(patientActions.setPatientsStatus('loading'));
+      const response = await clinicalService.getPatients();
+      dispatch(patientActions.setPatientsList(response));
+      dispatch(patientActions.setPatientsStatus('succeeded'));
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to fetch patients";
+      dispatch(patientActions.setError(errorMsg));
+      toast.error("Failed to fetch patients");
+      setTimeout(() => dispatch(patientActions.setError(null)), 3000);
+    } finally {
+      dispatch(patientActions.setLoading(false));
+    }
+  };
+};
+
+export const fetchArchivedPatients = () => {
+  return async (dispatch) => {
+    try {
+      dispatch(patientActions.setLoading(true));
+      dispatch(patientActions.setArchivedStatus('loading'));
+      const response = await clinicalService.getPatients(true);
+      dispatch(patientActions.setArchivedList(response));
+      dispatch(patientActions.setArchivedStatus('succeeded'));
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to fetch archived patients";
+      dispatch(patientActions.setError(errorMsg));
+      toast.error("Failed to fetch archived patients");
+      setTimeout(() => dispatch(patientActions.setError(null)), 3000);
+    } finally {
+      dispatch(patientActions.setLoading(false));
+    }
+  };
+};
+
+export const addNewPatient = (patientData) => {
+  return async (dispatch) => {
+    try {
+      dispatch(patientActions.setLoading(true));
+      const response = await clinicalService.createPatient(patientData);
+      dispatch(patientActions.addPatient(response));
+      toast.success("Patient added successfully");
+      dispatch(
+        notificationActions.addNotification({
+          title: "Patient Added",
+          message: "New patient added successfully",
+          type: "success",
+        })
+      );
+      return response;
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to add patient";
+      dispatch(patientActions.setError(errorMsg));
+      dispatch(
+        notificationActions.addNotification({
+          title: "Add Patient Failed",
+          message: errorMsg,
+          type: "error",
+        })
+      );
+      toast.error(errorMsg);
+      setTimeout(() => dispatch(patientActions.setError(null)), 3000);
+      throw error;
+    } finally {
+      dispatch(patientActions.setLoading(false));
+    }
+  };
+};
+
+export const archivePatient = (id) => {
+  return async (dispatch) => {
+    try {
+      dispatch(patientActions.setLoading(true));
+      const response = await clinicalService.archivePatient(id);
+      dispatch(patientActions.removePatientFromList(response));
+      dispatch(patientActions.addArchivedPatient(response));
+      toast.success("Patient archived successfully");
+      dispatch(
+        notificationActions.addNotification({
+          title: "Patient Archived",
+          message: "Patient archived successfully",
+          type: "success",
+        })
+      );
+      return response;
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to archive patient";
+      dispatch(patientActions.setError(errorMsg));
+      toast.error(errorMsg);
+      setTimeout(() => dispatch(patientActions.setError(null)), 3000);
+      throw error;
+    } finally {
+      dispatch(patientActions.setLoading(false));
+    }
+  };
+};
+
+export const unarchivePatient = (id) => {
+  return async (dispatch) => {
+    try {
+      dispatch(patientActions.setLoading(true));
+      const response = await clinicalService.unarchivePatient(id);
+      dispatch(patientActions.removeArchivedPatient(response));
+      dispatch(patientActions.addPatient(response));
+      toast.success("Patient unarchived successfully");
+      dispatch(
+        notificationActions.addNotification({
+          title: "Patient Unarchived",
+          message: "Patient unarchived successfully",
+          type: "success",
+        })
+      );
+      return response;
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to unarchive patient";
+      dispatch(patientActions.setError(errorMsg));
+      toast.error(errorMsg);
+      setTimeout(() => dispatch(patientActions.setError(null)), 3000);
+      throw error;
+    } finally {
+      dispatch(patientActions.setLoading(false));
+    }
+  };
+};
 
 export const selectAllPatients = (state) => state.patients.patientsList;
-export const selectPatientStatus = (state) => state.patients.status;
+export const selectPatientError = (state) => state.patients.error;
 export const selectPatientById = (state, patientId) => state.patients.patientsList.find(p => p.id === patientId);
+export const selectPatientStatus = (state) => state.patients.patientsStatus;
 export const selectArchivedPatients = (state) => state.patients.archivedList;
 export const selectArchivedPatientStatus = (state) => state.patients.archivedStatus;
 

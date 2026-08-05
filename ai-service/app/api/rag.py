@@ -56,6 +56,27 @@ async def rag_status():
             "chunkCount": 0
         }
 
+@router.get("/has-embeddings")
+async def has_embeddings(fileKey: str):
+    """
+    Reports whether a document has any chunks embedded in the vector store.
+    Used by document-service's guideline-lifecycle reconciliation job to detect
+    a superseding upload whose embedding step failed or is still lagging behind
+    the old version's retirement.
+    """
+    from app.core.db import engine
+
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text("SELECT COUNT(*) FROM langchain_pg_embedding WHERE cmetadata->>'file_key' = :file_key"),
+                {"file_key": fileKey}
+            )
+            chunk_count = result.scalar() or 0
+        return {"fileKey": fileKey, "hasEmbeddings": chunk_count > 0, "chunkCount": chunk_count}
+    except Exception as e:
+        return {"fileKey": fileKey, "hasEmbeddings": False, "chunkCount": 0, "error": str(e)}
+
 @router.get("/documents")
 async def list_rag_documents():
     """List all unique documents ingested into the RAG vector store."""

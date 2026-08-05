@@ -1,8 +1,10 @@
 import React from "react";
 import StatusBadge from "../../../components/ui/Badge";
-import { Brain, Clock } from "lucide-react";
+import { Brain, Clock, Timer } from "lucide-react";
+import { daysUntilExpiry, isExpiringSoon } from "../utils/expiry";
 
 export default function ProtocolCard({ protocol, isSelected, onClick }) {
+  const expiringSoon = !protocol.isRetired && isExpiringSoon(protocol.expiryDate);
   return (
     <button
       onClick={onClick}
@@ -29,6 +31,11 @@ export default function ProtocolCard({ protocol, isSelected, onClick }) {
           {protocol.vectorized && (
             <span className="flex items-center gap-0.5 text-[10px] text-violet-600 dark:text-violet-400 font-semibold">
               <Brain className="w-2.5 h-2.5" /> RAG
+            </span>
+          )}
+          {expiringSoon && (
+            <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+              <Timer className="w-2.5 h-2.5" /> Expires in {daysUntilExpiry(protocol.expiryDate)}d
             </span>
           )}
         </div>

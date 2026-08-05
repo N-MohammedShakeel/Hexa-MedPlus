@@ -141,5 +141,13 @@ export const clinicalService = {
 
     const response = await apiClient.post(`/documents/${id}/supersede`, formData);
     return response.data;
+  },
+  triggerExpirySweep: async () => {
+    const response = await apiClient.post('/documents/admin/retire-expired');
+    return response.data;
+  },
+  getVersionHistory: async (id) => {
+    const response = await apiClient.get(`/documents/${id}/versions`);
+    return response.data;
   }
 };

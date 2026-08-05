@@ -1,5 +1,7 @@
 import React from "react";
 import { Tag, X, ChevronDown, Check, FileText, Pill, History, MessageSquare } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchPatientNotes, createPatientNote, updateNoteComment } from "../../../store/slices/encounterSlice";
 import axiosInstance from "../../../config/axios";
 import Button from "../../../components/ui/Button";
 
@@ -20,8 +22,12 @@ const NOTE_STATUSES = [
 ];
 
 export default function PatientNotesDrawer({ patient, onClose }) {
-  const [notes, setNotes] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
+  const dispatch = useDispatch();
+  const notesObj = useSelector(state => state.encounter.patientNotes);
+  const notes = notesObj[patient.mrn] || [];
+  const loadingStates = useSelector(state => state.encounter.loadingStates);
+  const loading = loadingStates[`notes_${patient.mrn}`] || false;
+  
   const [activeTag, setActiveTag] = React.useState('PRESCRIPTION');
   const [newNote, setNewNote] = React.useState({ content: '', status: 'Active' });
   const [saving, setSaving] = React.useState(false);
@@ -29,19 +35,8 @@ export default function PatientNotesDrawer({ patient, onClose }) {
 
   // Load notes on mount
   React.useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await axiosInstance.get(`/api/clinical/patients/${patient.mrn}/notes`);
-        setNotes(Array.isArray(res.data) ? res.data : []);
-      } catch (e) {
-        console.error('Failed to load patient notes', e);
-        setNotes([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [patient.mrn]);
+    dispatch(fetchPatientNotes(patient.mrn));
+  }, [dispatch, patient.mrn]);
 
   const filteredNotes = notes.filter(n => n.tag === activeTag);
 
@@ -49,16 +44,14 @@ export default function PatientNotesDrawer({ patient, onClose }) {
     if (!newNote.content.trim()) return;
     setSaving(true);
     try {
-      const res = await axiosInstance.post(`/api/clinical/patients/${patient.mrn}/notes`, {
+      await dispatch(createPatientNote(patient.mrn, {
         tag: activeTag,
         content: newNote.content,
-        status: newNote.status,
-      });
-      setNotes(prev => [res.data, ...prev]);
+        status: newNote.status
+      }));
       setNewNote({ content: '', status: 'Active' });
     } catch (e) {
-      console.error('Failed to save note', e);
-      alert('Failed to save note.');
+      console.error(e);
     } finally {
       setSaving(false);
     }

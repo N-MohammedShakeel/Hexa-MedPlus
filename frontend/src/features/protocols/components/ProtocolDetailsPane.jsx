@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import StatusBadge from "../../../components/ui/Badge";
 import { clinicalService } from "../../../services/api/clinicalService";
 import {
@@ -18,6 +18,8 @@ import {
   Info,
   RefreshCw,
   CalendarClock,
+  History,
+  ChevronDown,
 } from "lucide-react";
 
 export default function ProtocolDetailsPane({
@@ -36,6 +38,37 @@ export default function ProtocolDetailsPane({
   const [supersedeExpiry, setSupersedeExpiry] = useState("");
   const [isSuperseding, setIsSuperseding] = useState(false);
 
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [versionHistory, setVersionHistory] = useState(null);
+  const [versionHistoryLoading, setVersionHistoryLoading] = useState(false);
+
+  const toggleVersionHistory = async () => {
+    const opening = !showVersionHistory;
+    setShowVersionHistory(opening);
+    if (opening && versionHistory === null && selectedProtocol) {
+      setVersionHistoryLoading(true);
+      try {
+        const chain = await clinicalService.getVersionHistory(selectedProtocol.id);
+        setVersionHistory(chain);
+      } catch (err) {
+        console.error("Failed to load version history:", err);
+        setVersionHistory([]);
+      } finally {
+        setVersionHistoryLoading(false);
+      }
+    }
+  };
+
+  const selectVersion = (doc) => {
+    const target = protocols.find((p) => p.id === doc.id);
+    if (target) setSelectedProtocol(target);
+  };
+
+  useEffect(() => {
+    setShowVersionHistory(false);
+    setVersionHistory(null);
+  }, [selectedProtocol?.id]);
+
   const handleSupersede = async () => {
     if (!supersedeFile || !selectedProtocol) return;
     setIsSuperseding(true);
@@ -45,7 +78,7 @@ export default function ProtocolDetailsPane({
       setSupersedeFile(null);
       setSupersedeExpiry("");
       setSelectedProtocol(null);
-      await fetchProtocols();
+      if (fetchProtocols) await fetchProtocols();
     } catch (err) {
       console.error("Failed to supersede guideline:", err);
       alert("Failed to upload new version. Please try again.");
@@ -120,48 +153,119 @@ export default function ProtocolDetailsPane({
               </div>
               <div className="flex items-center gap-1.5">
                 <RefreshCw className="w-3.5 h-3.5" />
-                Version: {selectedProtocol.version}
+                Version: v{selectedProtocol.version || 1}
               </div>
               {selectedProtocol.expiryDate && (
-                <div className="flex items-center gap-1.5">
+                <div className={`flex items-center gap-1.5 ${selectedProtocol.isRetired ? "" : "text-amber-600 dark:text-amber-400"}`}>
                   <CalendarClock className="w-3.5 h-3.5" />
                   {selectedProtocol.isRetired ? "Retired" : "Expires"}: {selectedProtocol.expiryDate}
                 </div>
               )}
             </div>
+          </div>
+        </div>
 
-            {showSupersedeForm && (
-              <div className="mt-4 p-4 bg-primary-50/50 dark:bg-primary-900/10 border border-primary-200 dark:border-primary-800 rounded-lg space-y-3">
-                <p className="text-xs text-primary-800 dark:text-primary-300">
-                  Uploading a new file here retires v{selectedProtocol.version} and embeds the new version as v{selectedProtocol.version + 1}.
-                </p>
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.doc,.txt"
-                  onChange={(e) => setSupersedeFile(e.target.files[0] || null)}
-                  className="w-full text-xs text-neutral-700 dark:text-slate-300"
-                />
+        {/* Supersede Form */}
+        {showSupersedeForm && (
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-200 dark:border-primary-800 p-5 mb-6 shadow-sm animate-fade-in">
+            <h4 className="text-sm font-bold text-neutral-900 dark:text-slate-100 mb-1 flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-primary-500" /> Upload New Version
+            </h4>
+            <p className="text-xs text-neutral-500 dark:text-slate-400 mb-4">
+              Uploading a file here retires v{selectedProtocol.version || 1} and embeds the new file as v{(selectedProtocol.version || 1) + 1}.
+            </p>
+            <div className="space-y-3">
+              <input
+                type="file"
+                accept=".pdf,.docx,.doc,.txt"
+                onChange={(e) => setSupersedeFile(e.target.files[0] || null)}
+                className="w-full text-xs text-neutral-700 dark:text-slate-300"
+              />
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">
+                  Expiry Date <span className="text-neutral-400">(optional)</span>
+                </label>
                 <input
                   type="date"
                   value={supersedeExpiry}
                   onChange={(e) => setSupersedeExpiry(e.target.value)}
-                  placeholder="Expiry date (optional)"
-                  className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-700 rounded-lg text-neutral-900 dark:text-slate-200"
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-700 rounded-lg focus:outline-none focus:border-primary-500 text-neutral-900 dark:text-slate-200"
                 />
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowSupersedeForm(false)} className="px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:text-neutral-800">Cancel</button>
-                  <button
-                    onClick={handleSupersede}
-                    disabled={!supersedeFile || isSuperseding}
-                    className="px-3 py-1.5 text-xs font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {isSuperseding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                    {isSuperseding ? "Uploading..." : "Upload New Version"}
-                  </button>
-                </div>
               </div>
-            )}
+              <div className="flex items-center gap-2 justify-end">
+                <button
+                  onClick={() => { setShowSupersedeForm(false); setSupersedeFile(null); setSupersedeExpiry(""); }}
+                  className="px-3 py-1.5 text-xs font-semibold text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSupersede}
+                  disabled={!supersedeFile || isSuperseding}
+                  className="flex items-center gap-1.5 px-4 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isSuperseding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {isSuperseding ? "Uploading..." : "Upload New Version"}
+                </button>
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Version History */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-neutral-200 dark:border-slate-700 overflow-hidden shadow-sm mb-6">
+          <button
+            onClick={toggleVersionHistory}
+            className="w-full flex items-center justify-between px-5 py-3 hover:bg-neutral-50 dark:hover:bg-slate-700/50 transition-colors"
+          >
+            <span className="flex items-center gap-2 text-sm font-bold text-neutral-900 dark:text-slate-100">
+              <History className="w-4 h-4 text-neutral-500" /> Version History
+            </span>
+            <ChevronDown className={`w-4 h-4 text-neutral-400 transition-transform ${showVersionHistory ? "rotate-180" : ""}`} />
+          </button>
+          {showVersionHistory && (
+            <div className="px-5 pb-4 border-t border-neutral-100 dark:border-slate-700">
+              {versionHistoryLoading ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-neutral-500 dark:text-slate-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading version history...
+                </div>
+              ) : !versionHistory || versionHistory.length === 0 ? (
+                <p className="py-4 text-xs text-neutral-500 dark:text-slate-400">No version history available.</p>
+              ) : (
+                <div className="pt-3 space-y-2">
+                  {versionHistory.map((doc) => {
+                    const isCurrent = doc.id === selectedProtocol.id;
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() => !isCurrent && selectVersion(doc)}
+                        disabled={isCurrent}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors ${
+                          isCurrent
+                            ? "bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 cursor-default"
+                            : "bg-neutral-50 dark:bg-slate-700/30 border border-neutral-100 dark:border-slate-700 hover:bg-neutral-100 dark:hover:bg-slate-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-neutral-800 dark:text-slate-200">v{doc.version || 1}</span>
+                          {isCurrent && (
+                            <span className="text-[10px] font-bold text-primary-600 dark:text-primary-400 uppercase">Viewing</span>
+                          )}
+                          <span className="text-[10px] text-neutral-500 dark:text-slate-500">
+                            {doc.uploadedAt ? new Date(doc.uploadedAt).toISOString().split("T")[0] : ""}
+                          </span>
+                        </div>
+                        <StatusBadge
+                          status={doc.status === "RETIRED" ? "neutral" : doc.status === "COMPLETED" ? "success" : "warning"}
+                          label={doc.status === "RETIRED" ? "Retired" : doc.status === "COMPLETED" ? "Active" : "Under Review"}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* AI RAG Status Card */}

@@ -1,11 +1,16 @@
 import React, { useState } from "react";
 import { Outlet } from "react-router-dom";
-import Sidebar from "./components/Sidebar/Sidebar";
-import TopNavBar from "./components/Header/TopNavBar";
-import { Toaster } from "react-hot-toast";
+import Sidebar from "./MainLayout/Sidebar";
+import TopNavBar from "./MainLayout/TopNavBar";
+import NotificationDrawer from "../features/notifications/components/NotificationDrawer";
+import { ToastContainer } from "react-toastify";
+import { useSelector, useDispatch } from "react-redux";
+import { notificationActions } from "../store/slices/notificationSlice";
 
 export default function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const dispatch = useDispatch();
+  const isDrawerOpen = useSelector((state) => state.notification.isDrawerOpen);
 
   return (
     <div className="flex h-screen bg-neutral-50 dark:bg-slate-900 transition-colors duration-200">
@@ -21,7 +26,7 @@ export default function MainLayout() {
           <Outlet />
         </div>
       </main>
-      <Toaster
+      <ToastContainer
         position="top-right"
         toastOptions={{
           duration: 3000,
@@ -32,6 +37,10 @@ export default function MainLayout() {
             fontSize: "13px",
           },
         }}
+      />
+      <NotificationDrawer 
+        isOpen={isDrawerOpen} 
+        onClose={() => dispatch(notificationActions.closeDrawer())} 
       />
     </div>
   );

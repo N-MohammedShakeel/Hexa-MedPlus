@@ -23,7 +23,7 @@ public class PatientTagNoteEntity {
     @Column(name = "tag", nullable = false, length = 30)
     private String tag;
 
-    /** Custom tag name when tag=CUSTOM */
+    /** Custom label when tag = CUSTOM */
     @Column(name = "custom_tag", length = 100)
     private String customTag;
 
@@ -31,13 +31,13 @@ public class PatientTagNoteEntity {
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    /** Lifecycle status: Active | Resolved | Under Observation | Past (Cured) */
-    @Column(name = "status", length = 50)
-    private String status;
-
-    /** Doctor comment / observation on this note */
+    /** Doctor comment / annotation on this note */
     @Column(columnDefinition = "TEXT")
     private String comment;
+
+    /** Lifecycle status: Active | Current Medication | Missed Doses | Resolved | Past (Cured) | Under Observation */
+    @Column(name = "status", length = 50)
+    private String status;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

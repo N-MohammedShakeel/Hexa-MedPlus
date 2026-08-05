@@ -4,6 +4,14 @@
 
 ---
 
+## 🔮 Pending Scenarios (Up Next)
+
+### Scenario 11 — AWS Cloud Deployment (Designathon Preparation) 🔮
+- **Goal**: Migrate the standalone Docker Compose architecture to scalable, cost-optimized AWS Cloud services.
+- **Workflow**: Frontend deployed via S3/CloudFront. Backend API Gateway and microservices deployed via EC2/ECS. Postgres Database on RDS. 
+
+---
+
 ## Scenario 1 — Document Upload with Real-time SSE Progress ✅
 
 **Demonstrates:** Local CPU parsing, MinIO object storage, Reactor Sinks SSE, Kafka event pub/sub, dynamic document categorisation.

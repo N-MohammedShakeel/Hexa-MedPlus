@@ -10,7 +10,7 @@ import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
 import StatusBadge from "../../../components/ui/Badge";
 import ExplainabilityModal from "../../explainability/components/ExplainabilityModal/ExplainabilityModal";
-import DocumentVisionViewer from "../../../components/ui/DocumentVisionViewer";
+import DocumentVisionViewer from "../../documents/components/DocumentVisionViewer";
 import VoiceInputButton from "../../../components/ui/VoiceInputButton";
 import {
     ArrowLeft, FileText, Beaker, Image as ImageIcon, Activity,
@@ -20,66 +20,18 @@ import {
 import PathwayTab from "../../clinical/components/AIInsightsColumn/PathwayTab";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { setSuggestedCodes, setAiGenerating } from "../../../store/slices/clinicalSlice";
+import { createEncounter, updateEncounterVitals, executeAiWorkflow, fetchAiWorkflow, validateNote } from "../../../store/slices/encounterSlice";
 import { clinicalService } from "../../../services/api/clinicalService";
+import { logPatientChartViewed, logLabReportOpened, logImagingViewed } from "../../../services/api/auditService";
 
-// --- SUB COMPONENTS ---
 
-function EvidenceTab({ activeTab, setActiveTab }) {
-    const tabs = [
-        { id: "notes", label: "Notes", Icon: FileText },
-        { id: "labs", label: "Labs", Icon: Beaker },
-        { id: "imaging", label: "Imaging", Icon: ImageIcon },
-        { id: "vitals", label: "Vitals", Icon: Activity },
-    ];
+import EvidenceTab from "../components/EvidenceTab";
+import EncounterNotesTab from "../components/EncounterNotesTab";
+import EncounterLabsTab from "../components/EncounterLabsTab";
+import EncounterImagingTab from "../components/EncounterImagingTab";
+import EncounterVitalsTab from "../components/EncounterVitalsTab";
+import EncounterAIPane from "../components/EncounterAIPane";
 
-    return (
-        <div className="flex border-b border-neutral-400 bg-neutral-100 px-4 pt-2">
-            {tabs.map((tab) => (
-                <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                            ? "border-primary-500 text-primary-600"
-                            : "border-transparent text-neutral-600 hover:text-neutral-900"
-                        }`}
-                >
-                    <tab.Icon className="w-4 h-4" />
-                    {tab.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-function DiagnosisCard({ dx, onExplain }) {
-    return (
-        <div className="p-3 border border-neutral-400 rounded-4 bg-white hover:border-primary-300 transition-colors">
-            <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-4 bg-info-50 flex items-center justify-center">
-                        <Stethoscope className="w-4 h-4 text-info-500" />
-                    </div>
-                    <div>
-                        <p className="text-sm font-semibold text-neutral-900">{dx.description}</p>
-                        <p className="text-xs text-neutral-600 font-mono">ICD-10: {dx.code}</p>
-                    </div>
-                </div>
-                <button
-                    onClick={() => onExplain(dx)}
-                    className="p-1.5 rounded-2 hover:bg-neutral-100 transition-colors"
-                >
-                    <Info className="w-4 h-4 text-neutral-600" />
-                </button>
-            </div>
-            <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-neutral-300 rounded-full overflow-hidden">
-                    <div className="h-full bg-success-500 rounded-full" style={{ width: `${dx.confidenceScore}%` }} />
-                </div>
-                <span className="text-xs font-bold text-neutral-700">{dx.confidenceScore}%</span>
-            </div>
-        </div>
-    );
-}
 
 // --- MAIN PAGE ---
 
@@ -194,14 +146,26 @@ export default function EncounterWorkspacePage() {
         if (!labTrendView || !patient?.mrn) return;
         let isActive = true;
         setLabTrendsLoading(true);
-        apiClient.get(`/ai/vision/results/${patient.mrn}/labs/trend`)
+        dispatch(fetchLabTrends(patient.mrn))
             .then(res => { if (isActive) setLabTrends(res.data?.trends || []); })
             .catch(err => { console.error("Failed to load lab trends:", err); if (isActive) setLabTrends([]); })
             .finally(() => { if (isActive) setLabTrendsLoading(false); });
         return () => { isActive = false; };
     }, [labTrendView, patient?.mrn]);
 
-    // Pick the most recent encounter for the workspace view
+    // AUDIT: Log chart viewed on mount (when patient data loads)
+    React.useEffect(() => {
+        if (patient?.mrn) {
+            logPatientChartViewed(patient.mrn, `${patient.firstName || ''} ${patient.lastName || ''}`.trim());
+        }
+    }, [patient?.mrn]);
+
+    // AUDIT: Log tab access for PHI (labs and imaging)
+    React.useEffect(() => {
+        if (!patient?.mrn) return;
+        if (activeTab === 'labs') logLabReportOpened(patient.mrn);
+        if (activeTab === 'imaging') logImagingViewed(patient.mrn);
+    }, [activeTab, patient?.mrn]);
     const latestEncounter = encounters && encounters.length > 0 ? encounters[0] : null;
     
     // Derive AI loading state from Redux
@@ -213,12 +177,12 @@ export default function EncounterWorkspacePage() {
             
             let targetEncounterId = latestEncounter?.id;
             if (!targetEncounterId) {
-                const newEncounterRes = await axiosInstance.post('/api/encounters', {
+                const newEncounterRes = await dispatch(createEncounter({
                     patientId: patientId,
                     encounterDate: new Date().toISOString(),
                     encounterType: 'Outpatient',
                     chiefComplaint: 'AI Generated Assessment'
-                });
+                }));
                 targetEncounterId = newEncounterRes.data.id;
                 await refetchEncounters();
             }
@@ -230,20 +194,67 @@ export default function EncounterWorkspacePage() {
             
             // Include global patient notes (like CLINICAL_NOTE, PRESCRIPTION, etc.) and their comments
             if (patientNotes && patientNotes.length > 0) {
-                const pNotesText = patientNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n\n");
-                allNotesText = allNotesText ? allNotesText + "\n\n" + pNotesText : pNotesText;
+                const boundaryDate = patient?.unarchivedAt ? new Date(patient.unarchivedAt) : null;
+                const currentNotes = boundaryDate ? patientNotes.filter(n => new Date(n.createdAt) >= boundaryDate) : patientNotes;
+                const pastNotes = boundaryDate ? patientNotes.filter(n => new Date(n.createdAt) < boundaryDate) : [];
+                
+                let pNotesText = "";
+                if (currentNotes.length > 0) {
+                    pNotesText += "--- CURRENT EPISODE OBSERVATIONS ---\n" + currentNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n\n");
+                }
+                if (pastNotes.length > 0) {
+                    const dateStr = boundaryDate ? boundaryDate.toLocaleDateString() : '';
+                    pNotesText += `\n\n--- PAST MEDICAL HISTORY (PREVIOUS EPISODE${dateStr ? ' BEFORE ' + dateStr : ''}) ---\n` + pastNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n\n");
+                }
+                
+                allNotesText = allNotesText ? allNotesText + "\n\n" + pNotesText.trim() : pNotesText.trim();
+            }
+
+            // --- FIX: Serialize Lab Reports ---
+            const labVisionResults = visionResults.filter(r =>
+                r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType))
+            );
+            if (labVisionResults.length > 0) {
+                const labText = labVisionResults.map(r => {
+                    const heading = r.aiHeading || r.fileKey?.split('/').pop() || 'Lab Report';
+                    const date = r.analyzedAt ? new Date(r.analyzedAt).toLocaleDateString() : 'Unknown date';
+                    const findings = r.clinicalFindings?.length > 0
+                        ? r.clinicalFindings.map(f => `  ${f.finding || f.test_name}: ${f.result} ${f.unit || ''} ${f.flag ? `[${f.flag}]` : ''} (Ref: ${f.reference_range || 'N/A'})`).join('\n')
+                        : (r.extractedText || 'No structured findings');
+                    return `LAB: ${heading} (${date})\n${findings}`;
+                }).join('\n\n');
+                allNotesText += `\n\n--- LAB REPORTS ---\n${labText}`;
+            }
+
+            // --- FIX: Serialize Imaging Summaries ---
+            const imagingVisionResults = visionResults.filter(r =>
+                ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType)
+            );
+            if (imagingVisionResults.length > 0) {
+                const imagingText = imagingVisionResults.map(r => {
+                    const heading = r.aiHeading || r.fileKey?.split('/').pop() || 'Imaging Study';
+                    const date = r.analyzedAt ? new Date(r.analyzedAt).toLocaleDateString() : 'Unknown date';
+                    return `IMAGING: ${heading} (${date})\n${r.reportSummary || r.extractedText || 'No summary available'}`;
+                }).join('\n\n');
+                allNotesText += `\n\n--- IMAGING STUDIES ---\n${imagingText}`;
+            }
+
+            // --- FIX: Include current vitals ---
+            if (latestEncounter?.vitals) {
+                const v = latestEncounter.vitals;
+                allNotesText += `\n\n--- CURRENT VITALS ---\nBP: ${v.bloodPressure || 'N/A'}, HR: ${v.heartRate || 'N/A'} bpm, O2 Sat: ${v.o2Sat || 'N/A'}%, Temp: ${v.temperature || 'N/A'}°F`;
             }
             
             // Prepare patient context
             const patientContext = `${patient.firstName} ${patient.lastName}, ${patient.dob}, ${patient.gender}. MRN: ${patient.mrn}`;
 
-            const response = await axiosInstance.post(API_ENDPOINTS.AI.WORKFLOW_EXECUTE, {
+            const response = await dispatch(executeAiWorkflow({
                 encounterId: targetEncounterId,
                 noteContent: allNotesText,
                 patientContext: patientContext
-            });
+            }, targetEncounterId));
             
-            setAiData(response.data);
+            setAiData(response);
             
         } catch (error) {
             console.error("AI Generation Failed:", error);
@@ -327,15 +338,26 @@ export default function EncounterWorkspacePage() {
         }
     };
 
+    const handleEditPatientNote = async (noteId, newContent) => {
+        try {
+            await axiosInstance.put(`/api/clinical/patients/${patient.mrn}/notes/${noteId}`, { content: newContent });
+            setPatientNotes(prev => prev.map(n => n.id === noteId ? { ...n, content: newContent } : n));
+        } catch (err) {
+            console.error('Failed to edit note:', err);
+            alert('Failed to edit note.');
+            throw err;
+        }
+    };
+
 
     // Load previously generated AI insights + Vision results
     React.useEffect(() => {
         if (!latestEncounter) return;
         const loadSavedInsights = async () => {
             try {
-                const res = await axiosInstance.get(API_ENDPOINTS.AI.WORKFLOW_GET(latestEncounter.id));
-                if (res.data && res.data.success) {
-                    setAiData(res.data);
+                const res = await dispatch(fetchAiWorkflow(latestEncounter.id));
+                if (res && res.success) {
+                    setAiData(res);
                 }
             } catch (err) {
                 if (err.response?.status !== 404) {
@@ -399,13 +421,13 @@ export default function EncounterWorkspacePage() {
             setNoteAlert(null);
             return;
         }
-        const validateNote = async () => {
+        const performValidation = async () => {
             try {
-                const res = await axiosInstance.post('/api/encounters/validate-note', {
+                const res = await dispatch(validateNote({
                     content: newNoteContent
-                });
-                if (res.data.hasAlert) {
-                    setNoteAlert(res.data.alertMessage);
+                }));
+                if (res && res.hasAlert) {
+                    setNoteAlert(res.alertMessage);
                 } else {
                     setNoteAlert(null);
                 }
@@ -413,7 +435,7 @@ export default function EncounterWorkspacePage() {
                 console.error("Note validation failed", err);
             }
         };
-        const timeout = setTimeout(validateNote, 1000);
+        const timeout = setTimeout(performValidation, 1000);
         return () => clearTimeout(timeout);
     }, [newNoteContent]);
 
@@ -425,12 +447,12 @@ export default function EncounterWorkspacePage() {
             let targetEncounterId = latestEncounter?.id;
 
             if (!targetEncounterId) {
-                const newEncounterRes = await axiosInstance.post('/api/encounters', {
+                const newEncounterRes = await dispatch(createEncounter({
                     patientId: patientId,
                     encounterDate: new Date().toISOString(),
                     encounterType: 'Outpatient',
                     chiefComplaint: 'Initial Visit'
-                });
+                }));
                 targetEncounterId = newEncounterRes.data.id;
             }
             
@@ -481,6 +503,21 @@ export default function EncounterWorkspacePage() {
         CODING_REVISION: { text: 'Revision Requested', color: 'bg-orange-100 text-orange-800 border-orange-200' },
         BILLING_READY:   { text: 'Ready for Billing',  color: 'bg-green-100 text-green-800 border-green-200' },
         BILLED:          { text: 'Billed',             color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+    };
+
+    const handleCreateNewEncounter = async () => {
+        try {
+            await dispatch(createEncounter({
+                patientId: patientId,
+                encounterDate: new Date().toISOString(),
+                encounterType: 'Outpatient',
+                chiefComplaint: 'Follow-up Visit'
+            }));
+            await refetchEncounters();
+        } catch (error) {
+            console.error("Failed to create new encounter", error);
+            alert("Failed to start a new encounter.");
+        }
     };
 
     const handleSignEncounter = async () => {
@@ -607,6 +644,7 @@ export default function EncounterWorkspacePage() {
             {/* 2-Pane Layout */}
             <div className="flex flex-1 overflow-hidden">
 
+                
                 {/* Left Pane: Clinical Evidence */}
                 <div className="flex-1 bg-neutral-50 flex flex-col border-r border-neutral-500">
                     <EvidenceTab activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -614,742 +652,87 @@ export default function EncounterWorkspacePage() {
                     <div className="flex-1 p-6 overflow-y-auto">
                         {/* Locked banner */}
                         {isLocked && (
-                            <div className="max-w-3xl mx-auto mb-4 flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="text-xs font-bold text-amber-800">Encounter Locked for Editing</p>
-                                    <p className="text-xs text-amber-700 mt-0.5">This encounter has been signed and is currently <strong>{latestEncounter?.status?.replace(/_/g, ' ')}</strong>. Notes cannot be modified.</p>
+                            <div className="max-w-3xl mx-auto mb-4 flex items-start justify-between gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-xs font-bold text-amber-800">Encounter Locked for Editing</p>
+                                        <p className="text-xs text-amber-700 mt-0.5">This encounter has been signed and is currently <strong>{latestEncounter?.status?.replace(/_/g, ' ')}</strong>. Notes cannot be modified.</p>
+                                    </div>
                                 </div>
+                                <Button size="sm" variant="primary" onClick={handleCreateNewEncounter}>Start New Encounter</Button>
                             </div>
                         )}
 
-                        {/* ══ NOTES TAB ══ */}
                         {activeTab === "notes" && (
-                            <div className="max-w-3xl mx-auto space-y-4">
-                                {!isLocked && (
-                                <Card padding="md" className="border-primary-200 bg-primary-50/10">
-                                    <h4 className="text-sm font-bold text-primary-800 mb-3">Add Patient Note</h4>
-                                    <div className="flex flex-wrap gap-2 mb-3">
-                                        {Object.entries(TAG_CONFIG).map(([key, cfg]) => (
-                                            <button key={key} onClick={() => setNoteTag(key)} className={`px-3 py-1 text-xs font-semibold rounded-full border transition-all ${noteTag === key ? cfg.color + ' shadow-sm' : 'bg-white border-neutral-300 text-neutral-500 hover:border-neutral-400'}`}>{cfg.label}</button>
-                                        ))}
-                                    </div>
-                                    {noteTag === 'CUSTOM' && <input value={noteCustomTag} onChange={e => setNoteCustomTag(e.target.value)} placeholder="Enter custom tag name..." className="w-full mb-3 px-3 py-1.5 text-xs border border-neutral-300 rounded-md focus:outline-none focus:border-primary-500" />}
-                                    {noteAlert && (
-                                        <div className="flex items-start gap-2 mb-3 p-3 bg-danger-50 border border-danger-300 rounded-lg">
-                                            <AlertTriangle className="w-4 h-4 text-danger-600 shrink-0 mt-0.5" />
-                                            <div>
-                                                <p className="text-xs font-bold text-danger-800">Potential Contraindication Detected</p>
-                                                <p className="text-xs text-danger-700 mt-0.5">{noteAlert}</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="relative">
-                                        <textarea value={newNoteContent} onChange={(e) => setNewNoteContent(e.target.value)} placeholder="Type your clinical observations, prescriptions, or history here..." className="w-full min-h-[100px] p-3 pr-12 text-sm border border-neutral-400 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
-                                        <VoiceInputButton
-                                            className="absolute top-2 right-2 bg-white dark:bg-slate-900 border border-neutral-300 dark:border-slate-600"
-                                            onTranscript={(text) => setNewNoteContent(prev => (prev && !prev.endsWith(' ') && !prev.endsWith('\n') ? prev + ' ' : prev) + text)}
-                                        />
-                                    </div>
-                                    <div className="flex justify-end mt-3">
-                                        <Button variant="primary" size="sm" icon={FileText} onClick={handleSavePatientNote} disabled={isSavingNote || !newNoteContent.trim()}>{isSavingNote ? "Saving..." : "Save Note"}</Button>
-                                    </div>
-                                </Card>
-                                )}
-                                {patientNotes.length === 0 && <div className="p-8 text-center text-slate-500 text-sm">No patient notes yet. Add the first note above.</div>}
-                                {patientNotes.map((note) => {
-                                    const cfg = TAG_CONFIG[note.tag] || TAG_CONFIG.CUSTOM;
-                                    const displayTag = note.tag === 'CUSTOM' ? (note.customTag || 'Custom') : cfg.label;
-                                    const isExpanded = expandedNoteId === note.id;
-                                    return (
-                                    <Card key={note.id} padding="md">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${cfg.color}`}>{displayTag}</span>
-                                                {note.status && <span className="px-2 py-0.5 text-xs rounded-full bg-neutral-100 border border-neutral-200 text-neutral-600">{note.status}</span>}
-                                                <span className="text-xs text-neutral-400">{note.createdAt ? new Date(note.createdAt).toLocaleString() : ''}</span>
-                                            </div>
-                                            <button onClick={() => handleDeletePatientNote(note.id)} className="p-1 text-neutral-400 hover:text-red-500 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
-                                        <pre className="text-sm text-neutral-800 font-sans whitespace-pre-wrap leading-relaxed bg-neutral-50 p-4 rounded border border-neutral-200">{note.content}</pre>
-                                        {note.comment && (
-                                            <div className="mt-2 p-2.5 bg-blue-50 border border-blue-200 rounded-md">
-                                                <p className="text-xs font-semibold text-blue-800 mb-0.5">Doctor Comment</p>
-                                                <p className="text-xs text-blue-700">{note.comment}</p>
-                                            </div>
-                                        )}
-                                        <div className="mt-2 pt-2 border-t border-neutral-200">
-                                            <button onClick={() => setExpandedNoteId(isExpanded ? null : note.id)} className="text-xs text-primary-600 hover:text-primary-800 font-medium">{isExpanded ? '▲ Hide' : '▼ Add Comment'}</button>
-                                            {isExpanded && (
-                                                <div className="mt-2 flex gap-2">
-                                                    <textarea value={noteCommentInputs[note.id] || ''} onChange={e => setNoteCommentInputs(prev => ({ ...prev, [note.id]: e.target.value }))} placeholder="Add a comment..." className="flex-1 text-xs p-2 border border-neutral-300 rounded focus:outline-none focus:border-primary-500 min-h-[60px]" />
-                                                    <button onClick={() => handleSaveNoteComment(note)} className="px-3 py-1.5 text-xs font-semibold bg-primary-600 text-white rounded hover:bg-primary-700 self-end">Save</button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </Card>
-                                    );
-                                })}
-                            </div>
+                            <EncounterNotesTab 
+                                isLocked={isLocked}
+                                noteTag={noteTag} setNoteTag={setNoteTag}
+                                noteCustomTag={noteCustomTag} setNoteCustomTag={setNoteCustomTag}
+                                noteAlert={noteAlert}
+                                newNoteContent={newNoteContent} setNewNoteContent={setNewNoteContent}
+                                handleSavePatientNote={handleSavePatientNote} isSavingNote={isSavingNote}
+                                patientNotes={patientNotes}
+                                expandedNoteId={expandedNoteId} setExpandedNoteId={setExpandedNoteId}
+                                handleDeletePatientNote={handleDeletePatientNote}
+                                handleEditPatientNote={handleEditPatientNote}
+                                noteCommentInputs={noteCommentInputs} setNoteCommentInputs={setNoteCommentInputs}
+                                handleSaveNoteComment={handleSaveNoteComment}
+                                TAG_CONFIG={TAG_CONFIG}
+                                unarchivedAt={patient?.unarchivedAt}
+                            />
                         )}
 
-                        {/* ══ LABS TAB ══ */}
                         {activeTab === "labs" && (
-                            <div className="max-w-3xl mx-auto space-y-4">
-                                <div className="flex justify-end">
-                                    <button
-                                        onClick={() => setLabTrendView(v => !v)}
-                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                                            labTrendView
-                                                ? "bg-primary-600 text-white border-primary-600"
-                                                : "bg-white dark:bg-slate-800 text-neutral-600 dark:text-slate-400 border-neutral-300 dark:border-slate-600 hover:border-primary-400"
-                                        }`}
-                                    >
-                                        {labTrendView ? "← Back to Reports" : "Trend View"}
-                                    </button>
-                                </div>
-
-                                {labTrendView ? (
-                                    labTrendsLoading ? (
-                                        <div className="p-8 text-center text-neutral-500 flex items-center justify-center gap-2">
-                                            <Loader2 className="w-4 h-4 animate-spin" /> Analyzing lab trends...
-                                        </div>
-                                    ) : labTrends.length === 0 ? (
-                                        <div className="p-12 text-center">
-                                            <Beaker className="w-10 h-10 text-neutral-300 mx-auto mb-3" />
-                                            <p className="text-sm font-medium text-neutral-600">No trends available yet</p>
-                                            <p className="text-xs text-neutral-400 mt-1">A trend needs the same lab test to appear across at least 2 uploaded reports.</p>
-                                        </div>
-                                    ) : (
-                                        labTrends.map((trend) => (
-                                            <Card key={trend.testName} padding="md" className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <h5 className="text-sm font-bold text-neutral-900">{trend.testName}</h5>
-                                                    <span className="text-xs text-neutral-500">
-                                                        {trend.unit && `Unit: ${trend.unit}`}{trend.referenceRange && ` · Ref: ${trend.referenceRange}`}
-                                                    </span>
-                                                </div>
-                                                <div className="h-[180px] w-full">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <LineChart data={trend.points.map(p => ({ ...p, dateLabel: p.date ? new Date(p.date).toLocaleDateString() : '' }))}>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
-                                                            <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B7280' }} />
-                                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6B7280' }} domain={['auto', 'auto']} />
-                                                            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                                            <Line type="monotone" dataKey="result" stroke="#0EA5E9" strokeWidth={3} dot={{ r: 4 }} />
-                                                        </LineChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                                {trend.aiInsight && (
-                                                    <p className="text-xs text-neutral-600 bg-neutral-50 border border-neutral-200 rounded-lg p-2.5">
-                                                        {trend.aiInsight}
-                                                    </p>
-                                                )}
-                                            </Card>
-                                        ))
-                                    )
-                                ) : (() => {
-                                    const labResults = visionResults.filter(r =>
-                                        r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType))
-                                    );
-                                    if (visionLoading) return (
-                                        <div className="p-8 text-center text-neutral-500 flex items-center justify-center gap-2">
-                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Loading lab reports...
-                                        </div>
-                                    );
-                                    if (labResults.length === 0) return (
-                                        <div className="p-12 text-center">
-                                            <Beaker className="w-10 h-10 text-neutral-300 mx-auto mb-3" />
-                                            <p className="text-sm font-medium text-neutral-600">No lab reports analyzed yet</p>
-                                            <p className="text-xs text-neutral-400 mt-1">Upload lab report images from the Documents page — Vision AI will analyze them automatically.</p>
-                                        </div>
-                                    );
-                                    return labResults.map((rec) => (
-                                        <div key={rec.id} onClick={() => setSelectedVisionDoc(rec)} className="cursor-pointer transition-transform hover:-translate-y-0.5">
-                                        <Card padding="md" className="border-neutral-300 space-y-3 hover:border-primary-400 hover:shadow-md transition-all">
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                                                        <Beaker className="w-4 h-4 text-blue-500" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-neutral-900">{rec.aiHeading || rec.fileKey?.split('/').pop() || rec.fileKey}</p>
-                                                        <p className="text-xs text-neutral-400">{rec.documentType || 'Lab Report'} · {rec.analyzedAt ? new Date(rec.analyzedAt).toLocaleString() : ''}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {rec.blurryRegions?.length > 0 && (
-                                                        <span className="flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full mr-2">
-                                                            <AlertTriangle className="w-3 h-3" />{rec.blurryRegions.length} unreadable region{rec.blurryRegions.length > 1 ? 's' : ''}
-                                                        </span>
-                                                    )}
-                                                    {rec.verified ? (
-                                                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
-                                                            <CheckCircle className="w-3 h-3" /> Verified
-                                                        </span>
-                                                    ) : (
-                                                        <button onClick={(e) => handleVerifyVisionRecord(rec.id, e)} className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-full border border-emerald-200 transition-colors" title="Verify">
-                                                            ✓ Verify
-                                                        </button>
-                                                    )}
-                                                    <button onClick={(e) => handleStartEditVision(rec, e)} className="p-1.5 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors" title="Edit JSON">
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
-                                                    <button onClick={(e) => handleDeleteVisionRecord(rec.id, e)} className="p-1.5 text-neutral-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors" title="Delete">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {rec.imageMetadata && rec.imageMetadata.total_pages > 0 && rec.imageMetadata.processed_pages < rec.imageMetadata.total_pages && (
-                                                <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-blue-50/50 text-blue-700 text-xs font-semibold rounded animate-pulse border border-blue-100">
-                                                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                                    Analyzing page {rec.imageMetadata.processed_pages + 1} of {rec.imageMetadata.total_pages}...
-                                                </div>
-                                            )}
-
-                                            {editingVisionId === rec.id ? (
-                                                <div className="bg-white rounded-lg p-3 border border-neutral-200 shadow-sm mt-3" onClick={e => e.stopPropagation()}>
-                                                    <h5 className="text-xs font-bold text-neutral-800 uppercase mb-2">Edit Structured Lab Results (JSON)</h5>
-                                                    <textarea 
-                                                        value={visionEditJson}
-                                                        onChange={(e) => setVisionEditJson(e.target.value)}
-                                                        className="w-full h-48 p-2 text-xs font-mono bg-neutral-900 text-slate-200 rounded border border-neutral-700 focus:outline-none focus:border-primary-500"
-                                                    />
-                                                    <div className="flex justify-end gap-2 mt-2">
-                                                        <Button size="sm" variant="secondary" onClick={handleCancelEditVision}>Cancel</Button>
-                                                        <Button size="sm" icon={Save} onClick={(e) => handleSaveVisionEdit(rec, e)}>Save</Button>
-                                                    </div>
-                                                </div>
-                                            ) : rec.clinicalFindings?.length > 0 && (
-                                                <div className="bg-white rounded-lg p-3 border border-neutral-200 shadow-sm mt-3">
-                                                    <h5 className="text-xs font-bold text-neutral-800 uppercase mb-2">Structured Lab Results</h5>
-                                                    <div className="overflow-x-auto">
-                                                        <table className="w-full text-xs text-left">
-                                                            <thead className="bg-neutral-50 text-neutral-600 border-b border-neutral-200">
-                                                                <tr>
-                                                                    <th className="px-2 py-1.5 font-semibold">Test Name</th>
-                                                                    <th className="px-2 py-1.5 font-semibold">Result</th>
-                                                                    <th className="px-2 py-1.5 font-semibold">Unit</th>
-                                                                    <th className="px-2 py-1.5 font-semibold">Reference</th>
-                                                                    <th className="px-2 py-1.5 font-semibold">Flag</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-neutral-100">
-                                                                {rec.clinicalFindings.map((finding, idx) => (
-                                                                    <tr key={idx} className="hover:bg-neutral-50">
-                                                                        <td className="px-2 py-1.5 text-neutral-900 font-medium">{finding.finding || finding.test_name || '—'}</td>
-                                                                        <td className="px-2 py-1.5 text-neutral-500 font-mono font-semibold">{finding.result || '—'}</td>
-                                                                        <td className="px-2 py-1.5 text-neutral-500">{finding.unit || '—'}</td>
-                                                                        <td className="px-2 py-1.5 text-neutral-500 text-[10px]">{finding.reference_range || '—'}</td>
-                                                                        <td className="px-2 py-1.5">
-                                                                            {finding.flag ? (
-                                                                                <span className={`px-1 rounded text-[10px] font-bold ${(finding.flag||'').match(/H|High/i) ? 'bg-danger-100 text-danger-700' : 'bg-warning-100 text-warning-700'}`}>
-                                                                                    {finding.flag}
-                                                                                </span>
-                                                                            ) : '—'}
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {rec.extractedText && (
-                                                <div className="bg-neutral-50 rounded-lg p-3 border border-neutral-200 mt-2">
-                                                    <p className="text-[10px] font-bold text-neutral-400 uppercase mb-2">Raw OCR Text</p>
-                                                    <pre className="text-[10px] text-neutral-600 font-sans whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto">{rec.extractedText}</pre>
-                                                </div>
-                                            )}
-                                        </Card>
-                                        </div>
-                                    ));
-                                })()}
-                            </div>
+                            <EncounterLabsTab 
+                                labTrendView={labTrendView} setLabTrendView={setLabTrendView}
+                                labTrendsLoading={labTrendsLoading} labTrends={labTrends}
+                                visionResults={visionResults} visionLoading={visionLoading}
+                                setSelectedVisionDoc={setSelectedVisionDoc} handleVerifyVisionRecord={handleVerifyVisionRecord}
+                                handleStartEditVision={handleStartEditVision} handleDeleteVisionRecord={handleDeleteVisionRecord}
+                                editingVisionId={editingVisionId} visionEditJson={visionEditJson} setVisionEditJson={setVisionEditJson}
+                                handleCancelEditVision={handleCancelEditVision} handleSaveVisionEdit={handleSaveVisionEdit}
+                                unarchivedAt={patient?.unarchivedAt}
+                                patient={patient}
+                            />
                         )}
 
                         {activeTab === "imaging" && (
-                            <div className="max-w-3xl mx-auto space-y-4">
-                                {(() => {
-                                    const imagingResults = visionResults.filter(r =>
-                                        ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType)
-                                    );
-                                    if (visionLoading) return (
-                                        <div className="p-8 text-center text-neutral-500 flex items-center justify-center gap-2">
-                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                            Loading imaging studies...
-                                        </div>
-                                    );
-                                    if (imagingResults.length === 0) return (
-                                        <div className="h-full flex items-center justify-center text-center p-12">
-                                            <div>
-                                                <ImageIcon className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
-                                                <p className="text-sm font-medium text-neutral-600">No imaging studies analyzed yet</p>
-                                                <p className="text-xs text-neutral-400 mt-1">Upload X-ray, MRI, or CT scan images from the Documents page — Vision AI will generate a clinical summary automatically.</p>
-                                            </div>
-                                        </div>
-                                    );
-                                    return imagingResults.map((rec) => (
-                                        <div key={rec.id} onClick={() => setSelectedVisionDoc(rec)} className="cursor-pointer transition-transform hover:-translate-y-0.5">
-                                        <Card padding="md" className="border-neutral-300 space-y-3 hover:border-violet-400 hover:shadow-md transition-all">
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
-                                                        <ImageIcon className="w-4 h-4 text-violet-500" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-neutral-900">{rec.aiHeading || rec.fileKey?.split('/').pop() || rec.fileKey}</p>
-                                                        <p className="text-xs text-neutral-400">{rec.documentType || 'Imaging'} · {rec.analyzedAt ? new Date(rec.analyzedAt).toLocaleString() : ''}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {rec.verified ? (
-                                                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
-                                                            <CheckCircle className="w-3 h-3" /> Verified
-                                                        </span>
-                                                    ) : (
-                                                        <button onClick={(e) => handleVerifyVisionRecord(rec.id, e)} className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-full border border-emerald-200 transition-colors" title="Verify">
-                                                            ✓ Verify
-                                                        </button>
-                                                    )}
-                                                    <button onClick={(e) => handleStartEditVision(rec, e)} className="p-1.5 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors" title="Edit JSON">
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
-                                                    <button onClick={(e) => handleDeleteVisionRecord(rec.id, e)} className="p-1.5 text-neutral-400 hover:text-danger-600 hover:bg-danger-50 rounded transition-colors" title="Delete">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {rec.imageMetadata && rec.imageMetadata.total_pages > 0 && rec.imageMetadata.processed_pages < rec.imageMetadata.total_pages && (
-                                                <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-violet-50/50 text-violet-700 text-xs font-semibold rounded animate-pulse border border-violet-100">
-                                                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                                    Analyzing page {rec.imageMetadata.processed_pages + 1} of {rec.imageMetadata.total_pages}...
-                                                </div>
-                                            )}
-
-                                            {editingVisionId === rec.id ? (
-                                                <div className="bg-white rounded-lg p-3 border border-neutral-200 shadow-sm mt-3" onClick={e => e.stopPropagation()}>
-                                                    <h5 className="text-xs font-bold text-neutral-800 uppercase mb-2">Edit Imaging Findings (JSON)</h5>
-                                                    <textarea 
-                                                        value={visionEditJson}
-                                                        onChange={(e) => setVisionEditJson(e.target.value)}
-                                                        className="w-full h-48 p-2 text-xs font-mono bg-neutral-900 text-slate-200 rounded border border-neutral-700 focus:outline-none focus:border-violet-500"
-                                                    />
-                                                    <div className="flex justify-end gap-2 mt-2">
-                                                        <Button size="sm" variant="secondary" onClick={handleCancelEditVision}>Cancel</Button>
-                                                        <Button size="sm" icon={Save} onClick={(e) => handleSaveVisionEdit(rec, e)}>Save</Button>
-                                                    </div>
-                                                </div>
-                                            ) : rec.reportSummary && rec.reportSummary !== 'Text document — see extracted text.' && (
-                                                <div className="bg-violet-50 rounded-lg p-3 border border-violet-200">
-                                                    <p className="text-xs font-bold text-violet-700 uppercase mb-2 flex items-center gap-1">
-                                                        <Brain className="w-3.5 h-3.5" /> AI Radiologist Summary
-                                                    </p>
-                                                    <p className="text-sm text-violet-900 leading-relaxed">{rec.reportSummary}</p>
-                                                </div>
-                                            )}
-                                            {rec.extractedText && (
-                                                <div className="bg-neutral-50 rounded-lg p-3 border border-neutral-200">
-                                                    <p className="text-xs font-bold text-neutral-500 uppercase mb-2">Extracted Text</p>
-                                                    <pre className="text-xs text-neutral-800 font-sans whitespace-pre-wrap leading-relaxed max-h-36 overflow-y-auto">{rec.extractedText}</pre>
-                                                </div>
-                                            )}
-                                            {rec.blurryRegions?.length > 0 && (
-                                                <div className="border border-amber-200 rounded-lg p-3 bg-amber-50/50">
-                                                    <p className="text-xs font-bold text-amber-700 mb-1">⚠ {rec.blurryRegions.length} region(s) needed manual review</p>
-                                                </div>
-                                            )}
-                                        </Card>
-                                        </div>
-                                    ));
-                                })()}
-                            </div>
+                            <EncounterImagingTab 
+                                visionResults={visionResults} visionLoading={visionLoading}
+                                setSelectedVisionDoc={setSelectedVisionDoc} handleVerifyVisionRecord={handleVerifyVisionRecord}
+                                handleStartEditVision={handleStartEditVision} handleDeleteVisionRecord={handleDeleteVisionRecord}
+                                editingVisionId={editingVisionId} visionEditJson={visionEditJson} setVisionEditJson={setVisionEditJson}
+                                handleCancelEditVision={handleCancelEditVision} handleSaveVisionEdit={handleSaveVisionEdit}
+                                unarchivedAt={patient?.unarchivedAt}
+                                patient={patient}
+                            />
                         )}
 
                         {activeTab === "vitals" && (
-                            <div className="max-w-3xl mx-auto space-y-4">
-                                {/* Current Values */}
-                                <div className="grid grid-cols-4 gap-4">
-                                    {[
-                                        { label: "BP", value: latestEncounter?.bloodPressure || "N/A", unit: "", flag: latestEncounter?.bloodPressure ? "normal" : "none" },
-                                        { label: "HR", value: latestEncounter?.heartRate || "N/A", unit: latestEncounter?.heartRate ? " bpm" : "", flag: latestEncounter?.heartRate ? "normal" : "none" },
-                                        { label: "O2 Sat", value: latestEncounter?.o2Sat || "N/A", unit: latestEncounter?.o2Sat ? "%" : "", flag: latestEncounter?.o2Sat && Number(latestEncounter.o2Sat) < 95 ? "high" : "normal" },
-                                        { label: "Temp", value: latestEncounter?.temperature || "N/A", unit: latestEncounter?.temperature ? " °F" : "", flag: "normal" },
-                                    ].map((v, i) => (
-                                        <Card key={i} padding="md">
-                                            <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">{v.label}</p>
-                                            <p className={`text-2xl font-bold ${v.flag === "high" ? "text-danger-600" : v.flag === "none" ? "text-neutral-400" : "text-neutral-900"}`}>
-                                                {v.value}{v.unit}
-                                            </p>
-                                        </Card>
-                                    ))}
-                                </div>
-
-                                {/* Entry Form — only when not locked */}
-                                {!isLocked && (
-                                    <Card padding="md" className="border-primary-200 bg-primary-50/10">
-                                        <h4 className="text-sm font-bold text-primary-800 mb-3">Update Vitals</h4>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {[
-                                                { key: 'bloodPressure', label: 'Blood Pressure', placeholder: 'e.g. 120/80', unit: 'mmHg' },
-                                                { key: 'heartRate',     label: 'Heart Rate',     placeholder: 'e.g. 72',     unit: 'bpm' },
-                                                { key: 'o2Sat',         label: 'O2 Saturation',  placeholder: 'e.g. 98',     unit: '%' },
-                                                { key: 'temperature',   label: 'Temperature',    placeholder: 'e.g. 98.6',   unit: '°F' },
-                                            ].map(field => (
-                                                <div key={field.key}>
-                                                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                                                        {field.label} <span className="font-normal text-neutral-400">({field.unit})</span>
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        value={vitalsForm[field.key]}
-                                                        onChange={e => setVitalsForm(v => ({ ...v, [field.key]: e.target.value }))}
-                                                        placeholder={field.placeholder}
-                                                        className="w-full px-3 py-2 text-sm border border-neutral-400 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="flex justify-end mt-3">
-                                            <Button
-                                                variant="primary" size="sm" icon={Activity}
-                                                disabled={isSavingVitals || !Object.values(vitalsForm).some(v => v.trim())}
-                                                onClick={async () => {
-                                                    setIsSavingVitals(true);
-                                                    try {
-                                                        let targetEncounterId = latestEncounter?.id;
-                                                        if (!targetEncounterId) {
-                                                            const newEncounterRes = await axiosInstance.post('/api/encounters', {
-                                                                patientId: patientId,
-                                                                encounterDate: new Date().toISOString(),
-                                                                encounterType: 'Outpatient',
-                                                                chiefComplaint: 'Initial Visit'
-                                                            });
-                                                            targetEncounterId = newEncounterRes.data.id;
-                                                        }
-                                                        await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.VITALS(targetEncounterId), vitalsForm);
-                                                        await refetchEncounters();
-                                                        setVitalsForm({ bloodPressure: '', heartRate: '', o2Sat: '', temperature: '' });
-                                                    } catch (err) {
-                                                        alert('Failed to save vitals.');
-                                                    } finally {
-                                                        setIsSavingVitals(false);
-                                                    }
-                                                }}
-                                            >
-                                                {isSavingVitals ? 'Saving...' : 'Save Vitals'}
-                                            </Button>
-                                        </div>
-                                    </Card>
-                                )}
-                            </div>
+                            <EncounterVitalsTab 
+                                latestEncounter={latestEncounter}
+                                isLocked={isLocked}
+                                patientId={patientId}
+                                refetchEncounters={refetchEncounters}
+                            />
                         )}
                     </div>
                 </div>
 
                 {/* Right Pane: AI Assistance */}
-                <div className="w-[420px] bg-white flex flex-col overflow-y-auto">
-                    <div className="p-4 border-b border-neutral-400 bg-info-50/30 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-primary-600" />
-                        <h3 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">AI Assistance</h3>
-                    </div>
-
-                    <div className="flex border-b border-neutral-300 bg-neutral-50 px-2 pt-2">
-                        {[
-                            { id: "summary", label: "Summary", icon: <FileText className="w-3.5 h-3.5" /> },
-                            { id: "diagnosis", label: "Diagnosis", icon: <Stethoscope className="w-3.5 h-3.5" /> },
-                            { id: "coding", label: "Coding", icon: <Database className="w-3.5 h-3.5" /> },
-                            { id: "pathway", label: "Pathway", icon: <Layers className="w-3.5 h-3.5" /> },
-                        ].map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveAiTab(tab.id)}
-                                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-                                    activeAiTab === tab.id
-                                        ? "border-primary-500 text-primary-700 bg-white"
-                                        : "border-transparent text-neutral-500 hover:text-neutral-800"
-                                }`}
-                            >
-                                {tab.icon}
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="p-4 border-b border-neutral-200 bg-neutral-50/50">
-                        <button
-                            onClick={handleGenerateAI}
-                            disabled={aiLoading || ((latestEncounter?.notes || []).length === 0 && (patientNotes || []).length === 0)}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 text-white font-semibold rounded-lg hover:bg-violet-700 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-sm"
-                        >
-                            {aiLoading ? (
-                                <>
-                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                    </svg>
-                                    Analyzing with Gen AI...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-4 h-4" /> {aiData ? "Regenerate Insights" : "Generate AI Insights"}
-                                </>
-                            )}
-                        </button>
-                    </div>
-
-                    <div className="flex-1 p-4 space-y-6">
-                        
-                        {aiError && (
-                            <div className="bg-red-50 text-red-600 p-4 rounded-8 text-sm flex items-center justify-center border border-red-200">
-                                {aiError}
-                            </div>
-                        )}
-
-                        {aiData && !aiData.success && (
-                            <div className="bg-red-50 text-red-600 p-4 rounded-8 text-sm flex flex-col items-center justify-center border border-red-200 mt-4">
-                                <AlertTriangle className="w-6 h-6 mb-2" />
-                                <span className="font-semibold">AI Workflow Execution Failed</span>
-                                <span className="mt-1">{aiData.errorMessage}</span>
-                            </div>
-                        )}
-
-                        {!aiData && !aiLoading && !aiError && (
-                            <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 mt-20">
-                                <Brain className="w-16 h-16 mb-4 opacity-50 text-violet-500" />
-                                <p className="font-medium">AI Workspace</p>
-                                <p className="text-sm mt-1">
-                                    Click 'Generate AI Insights' to analyze clinical data.
-                                </p>
-                            </div>
-                        )}
-
-                        {aiLoading && (
-                            <div className="h-full flex items-center justify-center mt-20">
-                                <div className="text-center text-violet-600">
-                                    <Brain className="w-12 h-12 mx-auto mb-3 animate-pulse" />
-                                    <p className="font-medium">Routing to Gemini Flash...</p>
-                                    <p className="text-xs text-slate-400 mt-1">
-                                        Processing RAG context & generating response
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* AI Tabs Rendering */}
-                        {aiData && aiData.success && (
-                            <>
-                                {activeAiTab === "summary" && (
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <div className="flex items-center gap-2">
-                                                {aiData.summary?.editedByHuman ? (
-                                                    <StatusBadge status="warning" label="Physician Entered" />
-                                                ) : (
-                                                    <StatusBadge status="success" label="AI Generated" />
-                                                )}
-                                            </div>
-                                            {!isLocked && (
-                                                isEditingAi ? (
-                                                    <div className="flex gap-2">
-                                                        <Button size="sm" variant="outline" onClick={() => setIsEditingAi(false)}>Cancel</Button>
-                                                        <Button size="sm" variant="primary" onClick={async () => {
-                                                            try {
-                                                                const updateData = {
-                                                                    summary: { ...editableAiData.summary, editedByHuman: true },
-                                                                    diagnosis: editableAiData.diagnosis ? { ...editableAiData.diagnosis, editedByHuman: true } : undefined,
-                                                                    codes: editableAiData.codes ? { ...editableAiData.codes, editedByHuman: true } : undefined,
-                                                                    pathway: editableAiData.pathway ? { ...editableAiData.pathway, editedByHuman: true } : undefined,
-                                                                    actorName: user?.fullName || user?.name || "Unknown Physician",
-                                                                    actorType: user?.role || "PHYSICIAN"
-                                                                };
-                                                                const updated = await clinicalService.updateAiInsight(latestEncounter.id, updateData);
-                                                                setAiData(updated);
-                                                                setIsEditingAi(false);
-                                                            } catch (err) {
-                                                                console.error("Failed to update AI insight", err);
-                                                            }
-                                                        }}>Save Insights</Button>
-                                                    </div>
-                                                ) : (
-                                                    <Button size="sm" variant="outline" onClick={() => {
-                                                        setIsEditingAi(true);
-                                                        setEditableAiData(JSON.parse(JSON.stringify(aiData)));
-                                                    }}>
-                                                        Edit Insights
-                                                    </Button>
-                                                )
-                                            )}
-                                        </div>
-                                        <div>
-                                            <h4 className="text-xs font-semibold text-neutral-800 uppercase tracking-wider mb-2">Subjective</h4>
-                                            <Card padding="md" className="bg-neutral-50 mb-4">
-                                                {isEditingAi ? (
-                                                    <textarea 
-                                                        className="w-full text-sm text-neutral-800 p-2 border rounded focus:outline-none focus:ring-1 focus:ring-primary-500" 
-                                                        rows={3} 
-                                                        value={editableAiData?.summary?.subjective || ""} 
-                                                        onChange={(e) => setEditableAiData({...editableAiData, summary: {...editableAiData.summary, subjective: e.target.value}})} 
-                                                    />
-                                                ) : (
-                                                    <p className="text-xs text-neutral-800 leading-relaxed">
-                                                        {renderTextWithCitations(aiData?.summary?.subjective)}
-                                                    </p>
-                                                )}
-                                            </Card>
-                                            <h4 className="text-xs font-semibold text-neutral-800 uppercase tracking-wider mb-2">Objective</h4>
-                                            <Card padding="md" className="bg-neutral-50 mb-4">
-                                                {isEditingAi ? (
-                                                    <textarea 
-                                                        className="w-full text-sm text-neutral-800 p-2 border rounded focus:outline-none focus:ring-1 focus:ring-primary-500" 
-                                                        rows={3} 
-                                                        value={editableAiData?.summary?.objective || ""} 
-                                                        onChange={(e) => setEditableAiData({...editableAiData, summary: {...editableAiData.summary, objective: e.target.value}})} 
-                                                    />
-                                                ) : (
-                                                    <p className="text-xs text-neutral-800 leading-relaxed">
-                                                        {renderTextWithCitations(aiData?.summary?.objective)}
-                                                    </p>
-                                                )}
-                                            </Card>
-                                            <h4 className="text-xs font-semibold text-neutral-800 uppercase tracking-wider mb-2">Assessment & Plan</h4>
-                                            <Card padding="md" className="bg-neutral-50">
-                                                {isEditingAi ? (
-                                                    <>
-                                                        <textarea 
-                                                            className="w-full text-sm text-neutral-800 p-2 border rounded mb-2 focus:outline-none focus:ring-1 focus:ring-primary-500" 
-                                                            rows={2} 
-                                                            value={editableAiData?.summary?.assessment || ""} 
-                                                            onChange={(e) => setEditableAiData({...editableAiData, summary: {...editableAiData.summary, assessment: e.target.value}})} 
-                                                        />
-                                                        <textarea 
-                                                            className="w-full text-sm text-neutral-800 p-2 border rounded focus:outline-none focus:ring-1 focus:ring-primary-500" 
-                                                            rows={2} 
-                                                            value={editableAiData?.summary?.plan || ""} 
-                                                            onChange={(e) => setEditableAiData({...editableAiData, summary: {...editableAiData.summary, plan: e.target.value}})} 
-                                                        />
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-xs text-neutral-800 leading-relaxed">
-                                                            {renderTextWithCitations(aiData?.summary?.assessment)}
-                                                        </p>
-                                                        <p className="text-xs text-neutral-800 leading-relaxed mt-2">
-                                                            {renderTextWithCitations(aiData?.summary?.plan)}
-                                                        </p>
-                                                    </>
-                                                )}
-                                            </Card>
-                                        </div>
-                                        
-                                        {aiData?.summary.criticalAlerts?.length > 0 && (
-                                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                                <h4 className="text-xs font-semibold text-red-800 uppercase tracking-wider mb-2">Critical Alerts</h4>
-                                                {aiData?.summary.criticalAlerts.map((alert, i) => (
-                                                    <p key={i} className="flex items-center gap-2 text-sm text-red-700">
-                                                        • {alert}
-                                                    </p>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {activeAiTab === "diagnosis" && (
-                                    <div className="space-y-4">
-                                        {/* Primary Diagnosis */}
-                                        {aiData?.diagnosis?.primaryDiagnosis && (
-                                            <div>
-                                                <h4 className="text-xs font-semibold text-neutral-800 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                                    <Stethoscope className="w-4 h-4 text-primary-500" /> Primary Diagnosis
-                                                </h4>
-                                                <DiagnosisCard 
-                                                    dx={{
-                                                        description: aiData.diagnosis.primaryDiagnosis,
-                                                        code: "PRIMARY",
-                                                        confidenceScore: 92,
-                                                        ...aiData.diagnosis
-                                                    }} 
-                                                    onExplain={openExplainability} 
-                                                />
-                                            </div>
-                                        )}
-
-                                        {/* Differential Diagnoses */}
-                                        {aiData?.diagnosis?.differentialDiagnoses?.length > 0 && (
-                                            <div>
-                                                <h4 className="text-xs font-semibold text-neutral-800 uppercase tracking-wider mb-2 mt-4">
-                                                    Differential Diagnoses
-                                                </h4>
-                                                <div className="space-y-3">
-                                                    {aiData.diagnosis.differentialDiagnoses.map((diff, idx) => (
-                                                        <DiagnosisCard 
-                                                            key={idx}
-                                                            dx={{
-                                                                description: diff,
-                                                                code: `DIFF-${idx + 1}`,
-                                                                confidenceScore: 75 - (idx * 10),
-                                                                ...aiData.diagnosis
-                                                            }} 
-                                                            onExplain={openExplainability} 
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {activeAiTab === "coding" && (
-                                    <div className="space-y-4">
-                                        <div className="bg-white border border-neutral-300 rounded-lg p-4 shadow-sm">
-                                            <h4 className="text-sm font-bold text-neutral-800 flex items-center gap-2 mb-4">
-                                                <Database className="w-4 h-4 text-violet-600" /> Suggested Medical Codes
-                                            </h4>
-                                            
-                                            <div className="space-y-3">
-                                                {aiData?.codes?.suggestedCodes?.map((code, i) => (
-                                                    <div key={i} className="flex justify-between items-start p-3 bg-neutral-50 rounded border border-neutral-200">
-                                                        <div>
-                                                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded uppercase">{code.type}</span>
-                                                            <p className="text-sm font-bold text-neutral-900 mt-1">{code.code}</p>
-                                                            <p className="text-xs text-neutral-600">{code.description}</p>
-                                                        </div>
-                                                        <button className="text-xs font-semibold text-primary-600 hover:text-primary-700">Approve</button>
-                                                    </div>
-                                                ))}
-                                                <div className="mt-4 pt-4 border-t border-neutral-200 flex justify-end gap-2">
-                                                    <Button size="sm" variant="primary" onClick={() => {
-                                                        // Navigate to the coding detail page — codes load from DB (AI workflow)
-                                                        navigate(`/coding/${patientId}`);
-                                                    }}>
-                                                        Push to Workbench
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeAiTab === "pathway" && (
-                                    <PathwayTab pathwaySteps={aiData?.pathway?.steps} />
-                                )}
-                            </>
-                        )}
-
-                    </div>
-                </div>
+                <EncounterAIPane 
+                    aiData={aiData} setAiData={setAiData}
+                    aiLoading={aiLoading} aiError={aiError}
+                    activeAiTab={activeAiTab} setActiveAiTab={setActiveAiTab}
+                    handleGenerateAI={handleGenerateAI} latestEncounter={latestEncounter}
+                    patientNotes={patientNotes} patientId={patientId} user={user}
+                    isLocked={isLocked} renderTextWithCitations={renderTextWithCitations}
+                    openExplainability={openExplainability}
+                    isModalOpen={isModalOpen} setIsModalOpen={setIsModalOpen}
+                    selectedData={selectedData}
+                />
             </div>
-
-            {/* Render the Explainability Modal */}
-            <ExplainabilityModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                data={selectedData}
-            />
 
             {selectedVisionDoc && (
                 <DocumentVisionViewer 

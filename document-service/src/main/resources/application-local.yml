@@ -25,3 +25,6 @@ minio:
 
 document-service:
   public-url: http://localhost:8082
+
+ai-service:
+  url: http://localhost:8083

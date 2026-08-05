@@ -7,17 +7,16 @@ public class PatientNoteDto {
 
     @Data @NoArgsConstructor @AllArgsConstructor @Builder
     public static class Request {
-        private String tag;         // PRESCRIPTION | CLINICAL_NOTE | HISTORY | CUSTOM
-        private String customTag;   // for custom tags
+        private String tag;       // PRESCRIPTION | CLINICAL_NOTE | HISTORY | CUSTOM
+        private String customTag; // label when tag = CUSTOM
         private String content;
-        private String status;      // Active | Resolved | Under Observation | Past (Cured)
-        private String comment;     // optional doctor comment
+        private String status;    // Active | Current Medication | Missed Doses | Resolved | Past (Cured) | Under Observation
     }
 
     @Data @NoArgsConstructor @AllArgsConstructor @Builder
     public static class StatusUpdate {
         private String status;
-        private String comment;     // doctor comment / observation on this note
+        private String comment;   // doctor annotation/comment on the note
     }
 
     @Data @NoArgsConstructor @AllArgsConstructor @Builder
@@ -27,8 +26,8 @@ public class PatientNoteDto {
         private String tag;
         private String customTag;
         private String content;
-        private String status;
         private String comment;
+        private String status;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
     }

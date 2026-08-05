@@ -38,5 +38,6 @@ public class PatientDto {
         private List<String> activeMedications;
         private boolean archived;
         private LocalDateTime archivedAt;
+        private LocalDateTime unarchivedAt;
     }
 }

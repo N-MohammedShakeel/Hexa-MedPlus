@@ -42,6 +42,7 @@ public class ClinicalService {
                 .activeMedications(meds)
                 .archived(entity.isArchived())
                 .archivedAt(entity.getArchivedAt())
+                .unarchivedAt(entity.getUnarchivedAt())
                 .build();
     }
 
@@ -109,6 +110,7 @@ public class ClinicalService {
                             .orElseThrow(() -> new NoSuchElementException("Patient not found: " + id));
                     entity.setArchived(false);
                     entity.setArchivedAt(null);
+                    entity.setUnarchivedAt(LocalDateTime.now());
                     return patientRepository.save(entity);
                 })
                 .subscribeOn(Schedulers.boundedElastic())

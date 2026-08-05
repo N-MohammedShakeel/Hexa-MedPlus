@@ -3,7 +3,7 @@ import { Loader2, AlertTriangle, CheckCircle, Trash2, FileText } from 'lucide-re
 import Card from '../../../components/ui/Card';
 import StatusBadge from '../../../components/ui/Badge';
 
-export default function DocumentListTable({ selectedCategory, filteredDocs, loading, handleRowClick, handleDelete, reanalyzingFileKeys = new Set() }) {
+export default function DocumentListTable({ selectedCategory, filteredDocs, loading, handleRowClick, handleDelete }) {
   return (
     <Card padding="none" className="overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-800 border-b border-neutral-500 dark:border-slate-700">
@@ -72,23 +72,11 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {reanalyzingFileKeys.has(doc.fileKey) ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
-                        <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">AI Analyzing...</span>
-                      </div>
-                    ) : doc.status === 'PROCESSING' ? (
+                    {doc.status === 'PROCESSING' ? (
                       <div className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
                         <span className="text-xs font-semibold text-primary-500 dark:text-primary-400">
                           Parsing... {doc.progress}%
-                        </span>
-                      </div>
-                    ) : doc.status === 'BLUR_DETECTED' ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-                          Blur Detected
                         </span>
                       </div>
                     ) : doc.status === 'REQUIRES_VERIFICATION' ? (

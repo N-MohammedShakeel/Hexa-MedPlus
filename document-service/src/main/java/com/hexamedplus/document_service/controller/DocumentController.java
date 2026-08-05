@@ -96,6 +96,9 @@ public class DocumentController {
                     log.error("Failed to delete file from MinIO: {}", doc.getFileKey(), e);
                 }
                 documentRepository.deleteById(doc.getId());
+                // Purge any pgvector chunks embedded for this document — otherwise the AI
+                // keeps retrieving content for a document that no longer exists.
+                eventPublisher.publishGuidelineRetiredEvent(doc.getFileKey());
             });
         })
         .subscribeOn(Schedulers.boundedElastic())
@@ -125,6 +128,7 @@ public class DocumentController {
                         log.warn("Could not delete file from storage for key {}: {}", fileKey, e.getMessage());
                     }
                     documentRepository.deleteById(doc.getId());
+                    eventPublisher.publishGuidelineRetiredEvent(doc.getFileKey());
                     log.info("Cascaded delete for document with fileKey: {}", fileKey);
                 });
         })
@@ -180,6 +184,50 @@ public class DocumentController {
                         filePart, "HOSPITAL_WIDE", "GUIDELINE", oldDoc.getSpecialty(),
                         parseExpiry(expiryDate), oldDoc.getVersion() + 1, oldDoc.getId(), jobId
                 ).doOnSuccess(result -> lifecycleService.retire(oldDoc)));
+    }
+
+    @GetMapping("/{id}/versions")
+    public Mono<ResponseEntity<java.util.List<DocumentEntity>>> getVersionHistory(@PathVariable String id) {
+        return Mono.fromCallable(() -> {
+                    DocumentEntity current = documentRepository.findById(java.util.UUID.fromString(id))
+                            .orElseThrow(() -> new java.util.NoSuchElementException("Document not found: " + id));
+
+                    java.util.List<DocumentEntity> chain = new java.util.ArrayList<>();
+
+                    // Walk ancestors (oldest first)
+                    DocumentEntity cursor = current;
+                    while (cursor.getParentDocumentId() != null) {
+                        cursor = documentRepository.findById(cursor.getParentDocumentId()).orElse(null);
+                        if (cursor == null) break;
+                        chain.add(0, cursor);
+                    }
+
+                    chain.add(current);
+
+                    // Walk descendants (newest last)
+                    DocumentEntity tail = current;
+                    var children = documentRepository.findByParentDocumentId(tail.getId());
+                    while (!children.isEmpty()) {
+                        DocumentEntity child = children.get(0);
+                        chain.add(child);
+                        tail = child;
+                        children = documentRepository.findByParentDocumentId(tail.getId());
+                    }
+
+                    return chain;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(ResponseEntity::ok);
+    }
+
+    @PostMapping("/admin/retire-expired")
+    public Mono<ResponseEntity<Map<String, Object>>> triggerExpirySweep() {
+        return Mono.fromCallable(() -> {
+                    int retiredCount = lifecycleService.retireExpiredGuidelines();
+                    return Map.<String, Object>of("retiredCount", retiredCount);
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(ResponseEntity::ok);
     }
 
     private java.time.LocalDate parseExpiry(String expiryDate) {

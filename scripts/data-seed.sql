@@ -35,9 +35,7 @@ CREATE TABLE IF NOT EXISTS patients (
     room VARCHAR(20),
     admission_date TIMESTAMP WITHOUT TIME ZONE,
     allergies TEXT,
-    active_medications TEXT,
-    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
-    archived_at TIMESTAMP WITHOUT TIME ZONE
+    active_medications TEXT
 );
 
 CREATE TABLE IF NOT EXISTS encounters (
@@ -140,26 +138,7 @@ CREATE TABLE IF NOT EXISTS document_uploads (
     file_size BIGINT,
     target_mrn VARCHAR(50),
     specialty VARCHAR(100),
-    uploaded_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
-    version INTEGER DEFAULT 1,
-    expiry_date DATE,
-    retired_at TIMESTAMP WITHOUT TIME ZONE,
-    parent_document_id UUID
-);
-
-CREATE TABLE IF NOT EXISTS document_analysis (
-    id VARCHAR(255) PRIMARY KEY,
-    file_key VARCHAR(255) NOT NULL,
-    patient_mrn VARCHAR(50) NOT NULL,
-    document_type VARCHAR(50),
-    extracted_text TEXT,
-    report_summary TEXT,
-    blurry_regions JSONB,
-    image_width DOUBLE PRECISION,
-    image_height DOUBLE PRECISION,
-    model_used VARCHAR(100),
-    verified BOOLEAN DEFAULT FALSE,
-    analyzed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    uploaded_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS ai_insights (

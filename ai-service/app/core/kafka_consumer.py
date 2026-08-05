@@ -138,13 +138,14 @@ async def _call_vision_api(file_key: str, file_url: str = None, doc_type: str = 
         blur_pct, blur_boxes, img_width, img_height = check_image_blur(image_bytes)
         log_info("check_image_blur: " + file_key + " is " + str(round(blur_pct, 2)) + "% blurry (" + str(len(blur_boxes)) + " regions).")
 
-        if blur_pct > 25.0 and not is_text_doc:
-            # Only skip Vision AI for heavily blurred imaging/visual documents
-            log_info("Imaging document " + file_key + " is heavily blurred (" + str(round(blur_pct, 1)) + "%) - skipping Vision AI.")
-            return None
+        if not is_text_doc:
+            # Bypass blur logic for MRIs, X-Rays, and general imaging which shouldn't be penalized for soft edges
+            log_info(f"Ignoring blur detection results for imaging document type: {doc_type}")
+            blur_pct = 0.0
+            blur_boxes = []
 
         if blur_boxes:
-            # Blurry regions found: skip the expensive Vision AI call and return
+            # Blurry regions found in a text document: skip the expensive Vision AI call and return
             # immediately so the doctor can annotate first (mirrors the PDF pipeline).
             # The full OCR/structuring pass runs later via /reanalyze, merged with
             # the doctor's annotations.
@@ -329,13 +330,13 @@ async def consume_documents():
                                     fields['image_metadata']['patient_info'] = structured_data.get('patient_info')
                         
                         async with AsyncSessionLocal() as session:
+                            needs_blur = fields.pop('needs_blur_annotation', False)
                             analysis = DocumentAnalysisEntity(**fields)
                             session.add(analysis)
                             await session.commit()
-                        log_info(f"Vision analysis saved for {file_key} (MRN: {mrn}) — {fields['ai_heading']}")
+                        log_info(f"Vision analysis saved for {file_key} (MRN: {mrn}) — {fields.get('ai_heading')}")
 
                         # Update document status based on blur detection result
-                        needs_blur = fields.get('needs_blur_annotation', False)
                         new_doc_status = 'BLUR_DETECTED' if needs_blur else 'COMPLETED'
                         try:
                             ds_base = 'http://document-service:8082' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8082'
@@ -374,14 +375,16 @@ async def consume_documents():
                                 fields['image_metadata'] = fields.get('image_metadata', {})
                                 fields['image_metadata']['total_pages'] = total_pages
                                 fields['image_metadata']['processed_pages'] = 0
+                                needs_blur = fields.pop('needs_blur_annotation', False)
                                 analysis = DocumentAnalysisEntity(**fields)
                                 session.add(analysis)
-                                await session.flush()
                                 analysis_id = analysis.id
                                 await session.commit()
+                                log_info(f"Created new PDF page analysis record: {analysis_id}")
                             elif result and 'api_error' not in result:
                                 # Update existing DB record
                                 existing = await session.get(DocumentAnalysisEntity, analysis_id)
+                                needs_blur = fields.pop('needs_blur_annotation', False)
                                 if existing:
                                     ocr_text = result.get('ocr_extraction', {}).get('extracted_text', '')
                                     if ocr_text:

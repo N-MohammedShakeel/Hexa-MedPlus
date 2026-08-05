@@ -13,7 +13,7 @@ import java.util.List;
  * REST API for per-patient clinical notes with tags:
  *   GET    /api/clinical/patients/{mrn}/notes          → list all notes for a patient
  *   POST   /api/clinical/patients/{mrn}/notes          → create a new tagged note
- *   PUT    /api/clinical/patients/{mrn}/notes/{noteId} → update note status / comment
+ *   PUT    /api/clinical/patients/{mrn}/notes/{noteId} → update note status / add comment
  *   DELETE /api/clinical/patients/{mrn}/notes/{noteId} → delete a note
  */
 @RestController

@@ -3,6 +3,7 @@ import authReducer from "./slices/authSlice";
 import clinicalReducer from "./slices/clinicalSlice";
 import patientReducer from "./slices/patientSlice";
 import themeReducer from "./slices/themeSlice";
+import notificationSlice from "./slices/notificationSlice";
 
 // Combine any other slices here as the application grows
 export const store = configureStore({
@@ -11,6 +12,7 @@ export const store = configureStore({
     clinical: clinicalReducer,
     patients: patientReducer,
     theme: themeReducer,
+    notification: notificationSlice.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
