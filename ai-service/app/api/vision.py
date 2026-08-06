@@ -124,8 +124,6 @@ async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jp
     # Route to AWS Bedrock Vision models if selected
     if state.GLOBAL_VISION_PREFERENCE == "aws_nova_pro":
         return await call_aws_bedrock_vision(image_bytes, image_type, actual_prompt, model_id="apac.amazon.nova-pro-v1:0", max_tokens=max_tokens)
-    elif state.GLOBAL_VISION_PREFERENCE == "claude_35_sonnet":
-        return await call_aws_bedrock_vision(image_bytes, image_type, actual_prompt, model_id="apac.anthropic.claude-3-5-sonnet-20241022-v2:0", max_tokens=max_tokens)
     elif state.GLOBAL_VISION_PREFERENCE == "aws_nova":
         return await call_aws_bedrock_vision(image_bytes, image_type, actual_prompt, model_id="apac.amazon.nova-lite-v1:0", max_tokens=max_tokens)
 

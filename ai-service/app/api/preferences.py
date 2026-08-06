@@ -20,8 +20,8 @@ def get_preference():
 
 @router.put("/")
 def update_preference(pref: PreferenceUpdateDto):
-    valid_llm = ["nvidia", "aws_nova_pro", "llama_70b", "claude_35_sonnet", "aws_nova", "qwen", "gemini"]
-    valid_vision = ["nvidia", "aws_nova_pro", "claude_35_sonnet", "aws_nova", "gemini"]
+    valid_llm = ["nvidia", "aws_nova_pro", "aws_nova", "qwen", "gemini"]
+    valid_vision = ["nvidia", "aws_nova_pro", "aws_nova", "gemini"]
 
     # Handle legacy single model updates if provided
     if pref.model and not pref.llm_model:

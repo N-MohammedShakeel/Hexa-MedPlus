@@ -449,10 +449,8 @@ function AiPreferencesSettings() {
         <div className="grid grid-cols-1 gap-2">
           {[
             { id: "nvidia", label: "Meta LLaMA 3.1 8B (Default)", desc: "Meta LLaMA 3.1 8B Instruct via NVIDIA NIM" },
-            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "amazon.nova-pro-v1:0 — Multimodal Flagship ($0.80/1M tokens)" },
-            { id: "llama_70b", label: "Meta LLaMA 3.3 70B Instruct (AWS Bedrock)", desc: "us.meta.llama3-3-70b-instruct-v1:0 — High-capacity clinical reasoning" },
-            { id: "claude_35_sonnet", label: "Anthropic Claude 3.5 Sonnet (AWS Bedrock)", desc: "us.anthropic.claude-3-5-sonnet-20241022-v2:0 — Gold standard medical precision" },
-            { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "amazon.nova-lite-v1:0 — Fast low-cost multimodal LLM" },
+            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "apac.amazon.nova-pro-v1:0 — Multimodal Flagship ($0.80/1M tokens)" },
+            { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "apac.amazon.nova-lite-v1:0 — Fast low-cost multimodal LLM ($0.06/1M tokens)" },
             { id: "qwen", label: "Qwen 2.5 14B (Custom via Ngrok)", desc: "Local Qwen 2.5 14B model endpoint" },
           ].map((opt) => (
             <label
@@ -488,9 +486,8 @@ function AiPreferencesSettings() {
         <div className="grid grid-cols-1 gap-2">
           {[
             { id: "nvidia", label: "Meta LLaMA 3.2 90B Vision (Default)", desc: "Llama 3.2 90B Vision Instruct via NVIDIA NIM" },
-            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "amazon.nova-pro-v1:0 — Flagship multimodal document & imaging analysis" },
-            { id: "claude_35_sonnet", label: "Anthropic Claude 3.5 Sonnet (AWS Bedrock)", desc: "us.anthropic.claude-3-5-sonnet-20241022-v2:0 — Gold standard vision OCR" },
-            { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "amazon.nova-lite-v1:0 — Ultra low-cost OCR & imaging ($0.06/1M tokens)" },
+            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "apac.amazon.nova-pro-v1:0 — Flagship multimodal document & imaging analysis" },
+            { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "apac.amazon.nova-lite-v1:0 — Ultra low-cost OCR & imaging ($0.06/1M tokens)" },
           ].map((opt) => (
             <label
               key={opt.id}

@@ -69,10 +69,6 @@ def get_llm():
 
     if pref == "aws_nova_pro":
         return get_aws_bedrock("apac.amazon.nova-pro-v1:0", "Amazon Nova Pro")
-    elif pref == "claude_35_sonnet":
-        return get_aws_bedrock("apac.anthropic.claude-3-5-sonnet-20241022-v2:0", "Claude 3.5 Sonnet")
-    elif pref == "llama_70b":
-        return get_aws_bedrock("meta.llama3-70b-instruct-v1:0", "Meta LLaMA 70B Instruct")
     elif pref == "aws_nova":
         return get_aws_bedrock("apac.amazon.nova-lite-v1:0", "Amazon Nova Lite")
     elif pref == "qwen" and settings.CUSTOM_LLM_BASE_URL:
