@@ -1,107 +1,309 @@
 import React, { useState } from 'react';
-import { Upload, AlertCircle, Loader2, Terminal } from 'lucide-react';
+import { Upload, AlertCircle, Loader2, CheckCircle2, AlertTriangle, ChevronDown } from 'lucide-react';
 import { Button, Input } from '../../../components/ui';
 import Card from '../../../components/ui/Card';
 import axiosInstance from '../../../config/axios';
 import { notifyError } from '../../../common/utils/toast';
 
-export default function DocumentUploadZone({ selectedCategory, setSelectedCategory, allPatients, refreshDocuments }) {
-  const [stagedFile, setStagedFile] = useState(null);
+// What the async AI pipeline actually does per flow type — shown as descriptive text
+// only, never as fake sub-steps we can't actually observe progress for.
+const ANALYSIS_DESCRIPTIONS = {
+  IMAGING: 'Running blur detection & Vision AI analysis...',
+  LAB_REPORT_IMAGE: 'Running blur detection, Vision AI OCR & structuring lab data...',
+  LAB_REPORT_DOC: 'Structuring lab data with AI...',
+  CLINICAL_NOTE: 'Summarizing & structuring with AI...',
+};
+
+// Terminal document statuses the AI pipeline can settle on. Anything else
+// (PROCESSING / REQUIRES_VERIFICATION) means the pipeline is still running.
+const TERMINAL_STATUSES = new Set(['COMPLETED', 'BLUR_DETECTED', 'FAILED']);
+// Give up polling after this many attempts so a stuck/unreachable AI service
+// can't leave an interval running forever.
+const MAX_POLL_ATTEMPTS = 150; // ~150 * 4s = 10 minutes
+
+function getFlowType(category, fileName) {
+  const isImage = /\.(png|jpg|jpeg|gif|webp|tiff?|dcm|dicom)$/i.test(fileName || '');
+  if (category === 'Imaging') return 'IMAGING';
+  if (category === 'Lab Reports') return isImage ? 'LAB_REPORT_IMAGE' : 'LAB_REPORT_DOC';
+  return 'CLINICAL_NOTE';
+}
+
+function BatchUploadProgress({ batches }) {
+  const [expanded, setExpanded] = useState(null);
+  if (!batches.length) return null;
+
+  return (
+    <Card>
+      <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-slate-300 mb-3">
+        Upload Progress
+      </h3>
+      <div className="space-y-3">
+        {batches.map((batch, bi) => {
+          const isExpanded = expanded === bi;
+          const phase = batch.phase; // 'upload' | 'analyze' | 'done' | 'blur' | 'failed' | 'timeout'
+          const uploadDone = phase !== 'upload';
+          const analyzeDone = phase === 'done' || phase === 'blur' || phase === 'failed' || phase === 'timeout';
+          const isFailed = phase === 'failed';
+          const isBlur = phase === 'blur';
+          const isDone = phase === 'done';
+
+          const statusLabel = isFailed ? 'Failed'
+            : isBlur ? 'Action Required'
+            : isDone ? 'Done'
+            : phase === 'timeout' ? 'Still processing'
+            : phase === 'analyze' ? 'Analyzing...'
+            : 'Uploading...';
+
+          const cardTone = isFailed
+            ? 'border-danger-300 dark:border-danger-700 bg-danger-50 dark:bg-danger-900/10'
+            : isBlur
+            ? 'border-warning-300 dark:border-warning-700 bg-warning-50 dark:bg-warning-900/10'
+            : isDone
+            ? 'border-success-300 dark:border-success-700 bg-success-50 dark:bg-success-900/10'
+            : 'border-neutral-200 dark:border-slate-700 bg-white dark:bg-slate-900';
+
+          return (
+            <div key={bi} className={`rounded-8 border ${cardTone} overflow-hidden`}>
+              {/* Header row */}
+              <button
+                className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                onClick={() => setExpanded(isExpanded ? null : bi)}
+              >
+                {isFailed ? (
+                  <AlertCircle className="w-4 h-4 text-danger-500 shrink-0" />
+                ) : isBlur ? (
+                  <AlertTriangle className="w-4 h-4 text-warning-500 shrink-0" />
+                ) : isDone ? (
+                  <CheckCircle2 className="w-4 h-4 text-success-500 shrink-0" />
+                ) : (
+                  <Loader2 className="w-4 h-4 text-primary-500 animate-spin shrink-0" />
+                )}
+                <span className="text-sm font-medium text-neutral-900 dark:text-slate-200 flex-1 truncate">{batch.fileName}</span>
+                <span className={`text-xs font-semibold shrink-0 ${isFailed ? 'text-danger-600 dark:text-danger-400' : isBlur ? 'text-warning-600 dark:text-warning-400' : isDone ? 'text-success-600 dark:text-success-400' : 'text-neutral-500 dark:text-slate-400'}`}>
+                  {statusLabel}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* 2-stage progress: Upload -> AI Analysis. Only phases we can actually observe. */}
+              {!isFailed && (
+                <div className="px-4 pb-3 flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${uploadDone ? 'bg-success-500 text-white' : 'bg-primary-500 text-white'}`}>
+                      {uploadDone ? <CheckCircle2 className="w-3 h-3" /> : <Loader2 className="w-3 h-3 animate-spin" />}
+                    </div>
+                    <span className="text-[11px] font-medium text-neutral-600 dark:text-slate-400">Upload</span>
+                  </div>
+                  <div className={`flex-1 h-0.5 ${uploadDone ? 'bg-success-400' : 'bg-neutral-200 dark:bg-slate-700'}`} />
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      isBlur ? 'bg-warning-500 text-white' : analyzeDone ? 'bg-success-500 text-white' : uploadDone ? 'bg-primary-500 text-white' : 'bg-neutral-200 dark:bg-slate-700 text-neutral-400'
+                    }`}>
+                      {isBlur ? <AlertTriangle className="w-3 h-3" /> : analyzeDone ? <CheckCircle2 className="w-3 h-3" /> : uploadDone ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="w-1 h-1 rounded-full bg-current" />}
+                    </div>
+                    <span className="text-[11px] font-medium text-neutral-600 dark:text-slate-400">AI Analysis</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Human-readable current status line */}
+              {!isFailed && (phase === 'analyze' || isBlur || phase === 'timeout') && (
+                <p className={`px-4 pb-3 text-xs -mt-1 ${isBlur ? 'text-warning-600 dark:text-warning-500 font-medium' : 'text-neutral-500 dark:text-slate-400'}`}>
+                  {isBlur
+                    ? 'Blurry regions detected — click this document in the list below to describe them before AI structuring continues.'
+                    : phase === 'timeout'
+                    ? 'AI analysis is taking longer than expected — check the document list for updates.'
+                    : (ANALYSIS_DESCRIPTIONS[batch.flowType] || 'AI is analyzing this document...')}
+                </p>
+              )}
+
+              {/* SSE detail log (expanded) */}
+              {isExpanded && batch.log.length > 0 && (
+                <div className="mx-4 mb-3 bg-slate-900 rounded-4 p-3 font-mono text-[11px] max-h-28 overflow-y-auto space-y-1">
+                  {batch.log.map((line, i) => (
+                    <div key={i} className={`leading-relaxed ${line.includes('⚠') ? 'text-warning-400' : line.includes('✗') || line.toLowerCase().includes('error') ? 'text-danger-400' : line.toLowerCase().includes('complete') ? 'text-success-400' : 'text-slate-300'}`}>
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
+  const fileInputRef = React.useRef(null);
+  const [stagedFiles, setStagedFiles] = useState([]);
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
   const [mrnInput, setMrnInput] = useState('');
   const [customDocName, setCustomDocName] = useState('');
+  const [uploadCategory, setUploadCategory] = useState('Clinical Notes');
   const [uploading, setUploading] = useState(false);
-  const [progressLog, setProgressLog] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [batches, setBatches] = useState([]);
+  // Per-batch poll interval handles, so each file's polling is fully independent
+  // and can be torn down without touching any other file's upload.
+  const pollTimers = React.useRef({});
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragOver(true);
+  React.useEffect(() => {
+    return () => {
+      Object.values(pollTimers.current).forEach(clearInterval);
+    };
+  }, []);
+
+  // Guideline/protocol documents are uploaded exclusively through the Clinical
+  // Protocols page (which collects specialty/expiry metadata this form doesn't) —
+  // this workspace only ever handles patient-linked documents.
+  const typeMap = {
+    'Clinical Notes': 'CLINICAL_NOTE',
+    'Lab Reports': 'LAB_REPORT',
+    'Imaging': 'IMAGING',
+    'Other Documents': 'OTHER',
   };
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
+  const categoryOptions = ['Clinical Notes', 'Lab Reports', 'Imaging', 'Other Documents'];
 
+  const handleDragOver = (e) => { e.preventDefault(); setIsDragOver(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); setIsDragOver(false); };
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setStagedFile(e.dataTransfer.files[0]);
-    }
+    if (e.dataTransfer.files?.length) setStagedFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
   };
-
   const handleFileSelect = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setStagedFile(e.target.files[0]);
+    const selected = Array.from(e.target.files || []);
+    if (selected.length) {
+      setStagedFiles(prev => [...prev, ...selected]);
     }
-    e.target.value = ''; // reset so same file can be re-selected
+    // Reset so the same file can be selected again
+    e.target.value = '';
+  };
+  const removeStaged = (idx) => setStagedFiles(prev => prev.filter((_, i) => i !== idx));
+
+  const updateBatch = (batchIdx, patch) => {
+    setBatches(prev => {
+      const updated = [...prev];
+      if (!updated[batchIdx]) return prev;
+      updated[batchIdx] = typeof patch === 'function' ? patch(updated[batchIdx]) : { ...updated[batchIdx], ...patch };
+      return updated;
+    });
   };
 
-  const doUpload = async (fileToUpload) => {
-    const file = fileToUpload || stagedFile;
-    if (!file) return;
-    if (!mrnInput) {
-      notifyError('Please select a Target Patient MRN before uploading.');
-      return;
+  const stopPolling = (batchIdx) => {
+    const timer = pollTimers.current[batchIdx];
+    if (timer) {
+      clearInterval(timer);
+      delete pollTimers.current[batchIdx];
     }
-    // Require custom name for Other Documents
-    if ((selectedCategory === 'Other Documents' || !['Clinical Notes','Lab Reports','Imaging','Recent Uploads','Failed Uploads','All Documents'].includes(selectedCategory)) && !customDocName.trim()) {
-      notifyError('Please enter a document name for Other Documents before uploading.');
-      return;
-    }
-    
-    const jobId = `job-${Date.now()}`;
-    const fileName = file.name;
-    setUploading(true);
-    setProgressLog([`▶ [${customDocName.trim() || fileName}] Upload starting...`]);
+  };
 
-    // Open SSE stream BEFORE posting (backend opens the sink on first subscribe)
-    const es = new EventSource(`/api/documents/progress/${jobId}`);
-    es.onmessage = (e) => {
-      setProgressLog(prev => [...prev, `  ${e.data}`]);
-      const data = e.data.toLowerCase();
-      if (data.includes('complete') || data.includes('error') || data.includes('failed')) {
-        es.close();
-        setUploading(false);
-        setStagedFile(null);
-        setCustomDocName('');
+  // Once the Java-side upload finishes, the file is only queued — blur detection,
+  // Vision AI and LLaMA structuring still have to run asynchronously in the AI
+  // service. Poll the real document status instead of pretending we're done.
+  const startPollingStatus = (batchIdx, fileKey) => {
+    let attempts = 0;
+    const timer = setInterval(async () => {
+      attempts += 1;
+      try {
+        const { data } = await axiosInstance.get(`/api/documents/by-file-key/${encodeURIComponent(fileKey)}`);
+        const status = data?.status;
+        if (TERMINAL_STATUSES.has(status)) {
+          stopPolling(batchIdx);
+          updateBatch(batchIdx, {
+            phase: status === 'COMPLETED' ? 'done' : status === 'BLUR_DETECTED' ? 'blur' : 'failed',
+          });
+          refreshDocuments();
+          return;
+        }
+      } catch (err) {
+        // Transient fetch errors during polling shouldn't kill the whole batch —
+        // just try again on the next tick.
+        console.error('Status poll failed:', err);
+      }
+      if (attempts >= MAX_POLL_ATTEMPTS) {
+        stopPolling(batchIdx);
+        updateBatch(batchIdx, { phase: 'timeout' });
         refreshDocuments();
       }
-    };
-    es.onerror = () => {
-      es.close();
-      setUploading(false);
-    };
+    }, 4000);
+    pollTimers.current[batchIdx] = timer;
+  };
 
-    try {
-      const docType = ['All Documents','Recent Uploads','Failed Uploads'].includes(selectedCategory)
-        ? 'Other Documents' : selectedCategory;
-      // Map category display name → backend documentType enum
-      const typeMap = {
-        'Clinical Notes': 'CLINICAL_NOTE',
-        'Lab Reports': 'LAB_REPORT',
-        'Imaging': 'IMAGING',
-        'Hospital Guidelines': 'GUIDELINE',
-        'Other Documents': 'OTHER',
-      };
-      const resolvedType = typeMap[docType] || 'OTHER';
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('documentType', resolvedType);
-      formData.append('mrn', mrnInput);
-      if (customDocName.trim()) formData.append('customDocName', customDocName.trim());
-      
-      await axiosInstance.post(`/api/documents?jobId=${jobId}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-    } catch (err) {
-      console.error('Upload failed', err);
-      setProgressLog(prev => [...prev, `✗ Upload error: ${err.response?.data?.error || err.message}`]);
-      es.close();
-      setUploading(false);
+  const doUpload = async () => {
+    if (!stagedFiles.length) return;
+    if (!mrnInput) { notifyError('Please select a Target Patient MRN before uploading.'); return; }
+    if (uploadCategory === 'Other Documents' && !customDocName.trim()) {
+      notifyError('Please enter a Document Name for Other Documents before uploading.');
+      return;
     }
+    setUploading(true);
+    Object.values(pollTimers.current).forEach(clearInterval);
+    pollTimers.current = {};
+    setBatches([]);
+
+    const resolvedType = typeMap[uploadCategory] || 'OTHER';
+
+    // Process each file independently with its own SSE stream and its own status poll —
+    // multiple files upload and get analyzed fully in parallel, never sharing state.
+    const uploadPromises = stagedFiles.map(async (file, fi) => {
+      const flowType = getFlowType(uploadCategory, file.name);
+      const jobId = `job-${Date.now()}-${fi}`;
+      const batchIdx = fi;
+
+      setBatches(prev => {
+        const updated = [...prev];
+        updated[batchIdx] = { fileName: file.name, flowType, phase: 'upload', log: [`▶ [${file.name}] Upload starting...`] };
+        return updated;
+      });
+
+      const es = new EventSource(`/api/documents/progress/${jobId}`);
+      es.onmessage = (e) => {
+        updateBatch(batchIdx, b => ({ ...b, log: [...b.log, `  ${e.data}`] }));
+        if (e.data.toLowerCase().includes('error') || e.data.toLowerCase().includes('failed')) {
+          updateBatch(batchIdx, { phase: 'failed' });
+          es.close();
+        }
+      };
+      es.onerror = () => { es.close(); };
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('documentType', resolvedType);
+        formData.append('mrn', mrnInput);
+        if (customDocName.trim()) formData.append('customDocName', customDocName.trim());
+        const res = await axiosInstance.post(`/api/documents?jobId=${jobId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        es.close();
+        const fileKey = res?.data?.fileKey;
+        if (fileKey) {
+          updateBatch(batchIdx, b => (b.phase === 'failed' ? b : { ...b, phase: 'analyze' }));
+          startPollingStatus(batchIdx, fileKey);
+        } else {
+          // Upload succeeded but we have no way to track further progress — don't
+          // claim it's done when we genuinely don't know.
+          updateBatch(batchIdx, { phase: 'timeout' });
+        }
+      } catch (err) {
+        es.close();
+        updateBatch(batchIdx, b => ({
+          ...b,
+          phase: 'failed',
+          log: [...(b?.log || []), `✗ Upload error: ${err.response?.data?.error || err.message}`]
+        }));
+      }
+    });
+
+    await Promise.allSettled(uploadPromises);
+    setStagedFiles([]);
+    setCustomDocName('');
+    setUploading(false);
+    refreshDocuments();
   };
 
   return (
@@ -109,91 +311,86 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-primary-600 dark:text-primary-400">Document Processing</h2>
-          <p className="text-sm text-neutral-800 dark:text-slate-400 mt-1">
-            Upload and process clinical documents with AI assistance
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button icon={Upload} onClick={() => document.getElementById('docWorkspaceFileInput').click()}>
-            Upload Files
-          </Button>
+          <p className="text-sm text-neutral-600 dark:text-slate-400 mt-1">Upload and process clinical documents with AI assistance</p>
         </div>
       </div>
 
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-            <Upload className="w-4 h-4 text-primary-600 dark:text-primary-400" /> Upload New Document
+            <Upload className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+            Upload Documents
+            {stagedFiles.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full text-xs font-bold">
+                {stagedFiles.length} file{stagedFiles.length > 1 ? 's' : ''} staged
+              </span>
+            )}
           </h3>
-          {stagedFile && (
-            <Button size="sm" onClick={() => doUpload()} disabled={uploading}>
-              {uploading ? 'Processing...' : 'Confirm Upload'}
+          {stagedFiles.length > 0 && (
+            <Button size="sm" onClick={doUpload} disabled={uploading}>
+              {uploading ? 'Processing...' : `Upload ${stagedFiles.length > 1 ? `${stagedFiles.length} Files` : 'File'}`}
             </Button>
           )}
         </div>
 
         <div className="space-y-4">
-          {stagedFile ? (
-            <div className="bg-primary-50 dark:bg-slate-800 border border-primary-200 dark:border-slate-700 rounded-8 p-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-primary-900 dark:text-slate-100">{stagedFile.name}</p>
-                <p className="text-xs text-primary-700 dark:text-slate-400 mt-1">
-                  {(stagedFile.size / 1024 / 1024).toFixed(2)} MB • Ready to upload
-                </p>
-              </div>
-              <Button variant="danger" size="sm" onClick={() => setStagedFile(null)} disabled={uploading}>Remove</Button>
+          {/* Drop zone */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            id="docWorkspaceFileInput"
+            className="hidden"
+            accept=".pdf,.docx,.dicom,.dcm,.doc,.txt,.png,.jpg,.jpeg"
+            multiple
+            onChange={handleFileSelect}
+          />
+          <div
+            className={`border-2 border-dashed rounded-8 p-6 text-center transition-colors cursor-pointer ${
+              isDragOver
+                ? 'border-primary-500 bg-primary-50 dark:bg-slate-800 dark:border-primary-400'
+                : 'border-neutral-300 dark:border-slate-700 hover:border-primary-400 hover:bg-neutral-50 dark:hover:bg-slate-800'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <Upload className="w-7 h-7 text-primary-500 dark:text-primary-400" />
+              <p className="text-sm font-medium text-neutral-800 dark:text-slate-200">
+                Drag &amp; drop files here, or <span className="text-primary-600 dark:text-primary-400 font-semibold underline">browse</span>
+              </p>
+              <p className="text-xs text-neutral-500 dark:text-slate-400">PDF, DOCX, PNG, JPG supported · Max 50MB · Multiple files allowed</p>
             </div>
-          ) : (
-            <div
-              className={`border-2 border-dashed rounded-8 p-8 text-center transition-colors cursor-pointer ${
-                isDragOver
-                  ? 'border-primary-500 bg-primary-50 dark:bg-slate-800 dark:border-primary-400'
-                  : 'border-neutral-300 dark:border-slate-700 hover:border-primary-400 hover:bg-neutral-50 dark:hover:bg-slate-800'
-              }`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById('docWorkspaceFileInput').click()}
-            >
-              <input
-                type="file"
-                id="docWorkspaceFileInput"
-                className="hidden"
-                accept=".pdf,.docx,.dicom,.dcm,.doc,.txt,.png,.jpg,.jpeg"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-              />
-              <div className="flex flex-col items-center gap-3">
-                <Upload className="w-8 h-8 text-primary-600 dark:text-primary-400" />
-                <div>
-                  <p className="text-sm font-medium text-neutral-900 dark:text-slate-200">
-                    Drag & drop files here to stage
-                  </p>
-                  <p className="text-xs text-neutral-800 dark:text-slate-400 mt-1">
-                    PDF, DOCX, DICOM supported (Max 50MB)
-                  </p>
+          </div>
+
+          {/* Staged files list */}
+          {stagedFiles.length > 0 && (
+            <div className="space-y-2">
+              {stagedFiles.map((f, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-2.5 bg-primary-50 dark:bg-slate-800 border border-primary-200 dark:border-slate-700 rounded-8">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-slate-100 truncate">{f.name}</p>
+                    <p className="text-xs text-neutral-500 dark:text-slate-400">{(f.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                  <button onClick={() => removeStaged(i)} disabled={uploading} className="text-xs text-danger-500 hover:text-danger-600 font-medium shrink-0">Remove</button>
                 </div>
-                <p className="text-xs font-medium text-neutral-700 dark:text-slate-500 uppercase tracking-wider mt-2">
-                  Or click to browse file
-                </p>
-              </div>
+              ))}
             </div>
           )}
 
-          <div className="flex gap-4 pt-3 border-t border-neutral-400 dark:border-slate-700">
+          {/* Patient & Category selectors */}
+          <div className="flex gap-4 pt-3 border-t border-neutral-200 dark:border-slate-700">
             <div className="flex-1">
-              <label className="block text-xs font-semibold text-neutral-800 dark:text-slate-300 mb-1.5">
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">
                 Target Patient <span className="text-danger-500">*</span>
               </label>
               <div className="relative">
-                <Input 
-                  placeholder="Search patient by name or MRN..." 
-                  leftIcon={AlertCircle} 
+                <Input
+                  placeholder="Search patient by name or MRN..."
+                  leftIcon={AlertCircle}
                   value={patientSearchTerm}
-                  onChange={(e) => {
-                    setPatientSearchTerm(e.target.value);
-                    setMrnInput('');
-                  }}
+                  onChange={(e) => { setPatientSearchTerm(e.target.value); setMrnInput(''); }}
                   required
                 />
                 {patientSearchTerm && !mrnInput && (
@@ -204,10 +401,7 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
                         <button
                           key={p.id}
                           className="w-full text-left px-4 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-slate-700 text-neutral-900 dark:text-slate-200"
-                          onClick={() => {
-                            setMrnInput(p.mrn);
-                            setPatientSearchTerm(`${p.name} (${p.mrn})`);
-                          }}
+                          onClick={() => { setMrnInput(p.mrn); setPatientSearchTerm(`${p.name} (${p.mrn})`); }}
                         >
                           <span className="font-semibold">{p.name}</span> <span className="text-neutral-500 dark:text-slate-400">({p.mrn})</span>
                         </button>
@@ -220,31 +414,24 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
               </div>
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-semibold text-neutral-800 dark:text-slate-300 mb-1.5">
-                Document Category
-              </label>
-              <select 
-                className="w-full py-2 px-3 bg-neutral-50 dark:bg-slate-800 border border-neutral-500 dark:border-slate-700 rounded-6 text-sm text-neutral-900 dark:text-slate-200"
-                value={selectedCategory === 'All Documents' || selectedCategory === 'Recent Uploads' || selectedCategory === 'Failed Uploads' ? 'Clinical Notes' : selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">Document Category</label>
+              <select
+                className="w-full py-2 px-3 bg-neutral-50 dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 rounded-6 text-sm text-neutral-900 dark:text-slate-200"
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value)}
               >
-                <option>Clinical Notes</option>
-                <option>Lab Reports</option>
-                <option>Imaging</option>
-                <option>Other Documents</option>
+                {categoryOptions.map(opt => <option key={opt}>{opt}</option>)}
               </select>
             </div>
-            {(selectedCategory === 'Other Documents' || (!['Clinical Notes','Lab Reports','Imaging','Recent Uploads','Failed Uploads','All Documents'].includes(selectedCategory))) && (
+            {uploadCategory === 'Other Documents' && (
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-neutral-800 dark:text-slate-300 mb-1.5">
-                  Document Name <span className="text-danger-500">*</span>
-                </label>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">Document Name <span className="text-danger-500">*</span></label>
                 <input
                   type="text"
-                  placeholder="Enter a descriptive name for this document..."
+                  placeholder="Enter a descriptive name..."
                   value={customDocName}
                   onChange={e => setCustomDocName(e.target.value)}
-                  className="w-full py-2 px-3 bg-neutral-50 dark:bg-slate-800 border border-neutral-500 dark:border-slate-700 rounded-6 text-sm text-neutral-900 dark:text-slate-200 focus:outline-none focus:border-primary-500"
+                  className="w-full py-2 px-3 bg-neutral-50 dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 rounded-6 text-sm text-neutral-900 dark:text-slate-200 focus:outline-none focus:border-primary-500"
                 />
               </div>
             )}
@@ -252,29 +439,8 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
         </div>
       </Card>
 
-      {/* SSE Progress Terminal */}
-      {progressLog.length > 0 && (
-        <Card>
-          <div className="flex items-center gap-2 mb-3">
-            <Terminal className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
-            <h3 className="text-xs font-semibold text-neutral-900 dark:text-slate-100 uppercase tracking-wider">
-              Processing Log
-            </h3>
-            {uploading && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500 ml-auto" />}
-            {!uploading && <button onClick={() => setProgressLog([])} className="ml-auto text-xs text-neutral-500 dark:text-slate-400 hover:text-neutral-700 dark:hover:text-slate-200">Clear</button>}
-          </div>
-          <div className="bg-slate-900 rounded-4 p-4 font-mono text-xs space-y-1.5 max-h-44 overflow-y-auto">
-            {progressLog.map((line, i) => (
-              <div key={i} className={`leading-relaxed ${
-                line.includes('⚠') ? 'text-warning-500'
-                : line.includes('✗') || line.includes('error') || line.includes('Error') ? 'text-danger-500'
-                : line.includes('complete') || line.includes('Complete') ? 'text-success-500'
-                : 'text-slate-300'
-              }`}>{line}</div>
-            ))}
-          </div>
-        </Card>
-      )}
+      {/* Dynamic Batch Progress */}
+      <BatchUploadProgress batches={batches} />
     </>
   );
 }

@@ -76,7 +76,7 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                       <div className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
                         <span className="text-xs font-semibold text-primary-500 dark:text-primary-400">
-                          Parsing... {doc.progress}%
+                          AI Analysis Running...
                         </span>
                       </div>
                     ) : doc.status === 'REQUIRES_VERIFICATION' ? (
@@ -85,8 +85,12 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                       <StatusBadge status="success" label="Completed" />
                     ) : doc.status === 'FAILED' ? (
                       <StatusBadge status="danger" label="Failed" />
+                    ) : doc.status === 'BLUR_DETECTED' ? (
+                      <StatusBadge status="warning" label="Blur Detected" />
+                    ) : doc.status === 'PENDING' ? (
+                      <StatusBadge status="neutral" label="Pending" />
                     ) : (
-                      <span className="text-xs text-neutral-600 dark:text-slate-400">Pending</span>
+                      <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-2 text-xs font-medium text-neutral-600 dark:text-slate-400">{doc.status}</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">

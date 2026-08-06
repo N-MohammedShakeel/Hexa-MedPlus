@@ -117,6 +117,15 @@ public class DocumentController {
         .then(Mono.just(ResponseEntity.ok().<Void>build()));
     }
 
+    @GetMapping("/by-file-key/{fileKey}")
+    public Mono<ResponseEntity<DocumentEntity>> getDocumentByFileKey(@PathVariable String fileKey) {
+        return Mono.fromCallable(() -> documentRepository.findAll().stream()
+                        .filter(d -> fileKey.equals(d.getFileKey()))
+                        .findFirst())
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(opt -> opt.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build()));
+    }
+
     @DeleteMapping("/by-file-key/{fileKey}")
     public Mono<ResponseEntity<Void>> deleteDocumentByFileKey(@PathVariable String fileKey) {
         return Mono.fromRunnable(() -> {
@@ -288,8 +297,12 @@ public class DocumentController {
                         default -> "Other Documents";
                     };
 
-                    // Determine final status based on parse confidence
-                    String docStatus = parseResult.requiresVerification() ? "REQUIRES_VERIFICATION" : "COMPLETED";
+                    // The AI service (blur detection / Vision AI / LLaMA structuring) still has to run
+                    // asynchronously after this upload returns, so the document is not actually
+                    // COMPLETED yet — it stays PROCESSING until that pipeline reports back via
+                    // PUT /api/documents/by-file-key/{fileKey}/status. REQUIRES_VERIFICATION still
+                    // takes priority as an immediate signal that local text extraction was low-confidence.
+                    String docStatus = parseResult.requiresVerification() ? "REQUIRES_VERIFICATION" : "PROCESSING";
 
                     // 3. Save Document to DB
                     DocumentEntity doc = DocumentEntity.builder()

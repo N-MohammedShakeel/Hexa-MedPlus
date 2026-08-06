@@ -1,19 +1,64 @@
 import React from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X, FileText } from 'lucide-react';
 import { Button } from '../../../components/ui';
 import axiosInstance from '../../../config/axios';
 import { notifyError } from '../../../common/utils/toast';
 
 export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, docBlobUrl, onClose, analyzingStates, setAnalyzingStates, onAnalysisStarted, onAnalysisComplete }) {
   const regions = docAiResult?.blurryRegions || [];
-  const imageWidth = docAiResult?.imageWidth || 1;
-  const imageHeight = docAiResult?.imageHeight || 1;
+  const isPdf = (doc?.fileKey || doc?.name || '').toLowerCase().endsWith('.pdf');
 
   const [step, setStep] = React.useState(0);
   const [inputs, setInputs] = React.useState(
     analyzingStates[docAiResult?.id]?.inputs || regions.map((_, i) => ({ region_index: i, doctor_text: '', skipped: false }))
   );
   const [isAnalyzing, setIsAnalyzing] = React.useState(!!analyzingStates[docAiResult?.id]?.isAnalyzing);
+
+  const currentRegion = regions[step] || {};
+  // PDFs tag each region with the page it was found on; plain images have no page and
+  // always show the single uploaded image.
+  const currentPage = isPdf ? (currentRegion.page || 1) : null;
+
+  // Per-page rendered image cache for PDFs: { [page]: blobUrl }
+  const [pageImages, setPageImages] = React.useState({});
+  const pageImagesRef = React.useRef(pageImages);
+  React.useEffect(() => { pageImagesRef.current = pageImages; }, [pageImages]);
+
+  React.useEffect(() => {
+    if (!isPdf || !currentPage || pageImagesRef.current[currentPage] || !doc?.fileKey) return;
+    let objectUrl = null;
+    let isActive = true;
+    (async () => {
+      try {
+        const token = localStorage.getItem('jwt_token');
+        const response = await fetch(`/api/ai/vision/pdf-page-image?fileKey=${encodeURIComponent(doc.fileKey)}&page=${currentPage}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        const blob = await response.blob();
+        if (!isActive) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPageImages(prev => ({ ...prev, [currentPage]: objectUrl }));
+      } catch (err) {
+        console.error('Failed to load PDF page image:', err);
+      }
+    })();
+    return () => { isActive = false; };
+  }, [isPdf, currentPage, doc?.fileKey]);
+
+  React.useEffect(() => {
+    // Revoke cached page image object URLs on unmount only (not on every page switch).
+    return () => {
+      Object.values(pageImagesRef.current).forEach(url => { if (url) URL.revokeObjectURL(url); });
+    };
+  }, []);
+
+  const displayImageUrl = isPdf ? pageImages[currentPage] : docBlobUrl;
+  // Per-region dimensions take priority (PDF pages can differ in size); fall back to the
+  // document-level dimensions used for plain single images.
+  const imageWidth = currentRegion.imgWidth || docAiResult?.imageWidth || 1;
+  const imageHeight = currentRegion.imgHeight || docAiResult?.imageHeight || 1;
+  // Only overlay regions that belong to the page currently being displayed.
+  const regionsOnPage = isPdf ? regions.filter(r => (r.page || 1) === currentPage) : regions;
 
   const update = (field, value) => {
     const newInputs = inputs.map((inp, i) => i === step ? { ...inp, [field]: value } : inp);
@@ -28,19 +73,21 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
     try {
       const res = await axiosInstance.post(`/api/ai/vision/results/${docAiResult.id}/reanalyze`, {
         fileUrl: doc.url,
-        blurDoctorInputs: inputs.map(inp => ({
-          region: `x:${regions[inp.region_index]?.x} y:${regions[inp.region_index]?.y}`,
-          text: inp.skipped ? "Skipped (not clinically significant)" : inp.doctor_text
-        }))
+        blurDoctorInputs: inputs.map(inp => {
+          const r = regions[inp.region_index] || {};
+          const regionLabel = isPdf && r.page ? `page:${r.page} x:${r.x} y:${r.y}` : `x:${r.x} y:${r.y}`;
+          return {
+            region: regionLabel,
+            text: inp.skipped ? "Skipped (not clinically significant)" : inp.doctor_text
+          };
+        })
       });
       setDocAiResult(prev => ({
         ...prev,
-        needs_blur_annotation: false,
+        needsBlurAnnotation: false,
         blurDoctorInputs: inputs,
         extractedText: res.data.extractedText,
         clinicalFindings: res.data.clinicalFindings,
-        imageWidth: res.data.imageWidth,
-        imageHeight: res.data.imageHeight,
         verified: false
       }));
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
@@ -74,26 +121,34 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
 
       <div className="flex-1 flex flex-col lg:flex-row gap-8 min-h-0">
         {/* Left: Document Centered */}
-        <div className="flex-1 relative flex items-center justify-center bg-black/60 rounded-8 border border-white/10 overflow-hidden p-4 shadow-2xl">
-          {docBlobUrl ? (
+        <div className="flex-1 relative flex flex-col items-center justify-center bg-black/60 rounded-8 border border-white/10 overflow-hidden p-4 shadow-2xl">
+          {isPdf && (
+            <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-black/60 text-white text-xs font-semibold px-2.5 py-1 rounded-6">
+              <FileText className="w-3.5 h-3.5" /> Page {currentPage}
+            </div>
+          )}
+          {displayImageUrl ? (
             <div className="relative inline-block max-h-full max-w-full">
-              <img src={docBlobUrl} alt="Document" className="max-h-[70vh] w-auto block rounded-4" />
-              {regions.map((reg, i) => (
-                <div
-                  key={i}
-                  style={{
-                    position: 'absolute',
-                    left: `${(reg.x / imageWidth) * 100}%`,
-                    top: `${(reg.y / imageHeight) * 100}%`,
-                    width: `${(reg.w / imageWidth) * 100}%`,
-                    height: `${(reg.h / imageHeight) * 100}%`
-                  }}
-                  className={`border-[3px] transition-all duration-300 ${i === step ? 'border-warning-500 bg-warning-500/30 shadow-[0_0_15px_rgba(217,119,6,0.5)] z-10' : 'border-danger-500/50 bg-danger-500/10'}`}
-                />
-              ))}
+              <img src={displayImageUrl} alt="Document" className="max-h-[70vh] w-auto block rounded-4" />
+              {regionsOnPage.map((reg) => {
+                const globalIdx = regions.indexOf(reg);
+                return (
+                  <div
+                    key={globalIdx}
+                    style={{
+                      position: 'absolute',
+                      left: `${(reg.x / imageWidth) * 100}%`,
+                      top: `${(reg.y / imageHeight) * 100}%`,
+                      width: `${(reg.w / imageWidth) * 100}%`,
+                      height: `${(reg.h / imageHeight) * 100}%`
+                    }}
+                    className={`border-[3px] transition-all duration-300 ${globalIdx === step ? 'border-warning-500 bg-warning-500/30 shadow-[0_0_15px_rgba(217,119,6,0.5)] z-10' : 'border-danger-500/50 bg-danger-500/10'}`}
+                  />
+                );
+              })}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-white/50">Loading image...</div>
+            <div className="flex items-center justify-center h-full text-white/50">Loading {isPdf ? `page ${currentPage}` : 'image'}...</div>
           )}
         </div>
 
@@ -103,16 +158,17 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
             <div className="flex items-center justify-between mb-2">
                 <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
                 Region {step + 1} of {regions.length}
+                {isPdf && <span className="ml-2 text-sm font-medium text-neutral-500 dark:text-slate-400">· Page {currentPage}</span>}
                 </h3>
                 <span className="text-xs font-mono text-warning-600 dark:text-warning-500 bg-warning-50 dark:bg-warning-500/15 px-2 py-0.5 rounded-6">
                   x:{regions[step]?.x} y:{regions[step]?.y}
                 </span>
             </div>
-            
+
             <p className="text-sm text-neutral-500 dark:text-slate-400 mb-4">
               What does the highlighted box say?
             </p>
-            
+
             <textarea
               value={current.doctor_text || ''}
               onChange={e => update('doctor_text', e.target.value)}
@@ -133,7 +189,7 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
                 disabled={step === 0 || isAnalyzing}
                 className="text-sm text-neutral-500 hover:text-neutral-800 dark:text-slate-400 dark:hover:text-slate-200 disabled:opacity-30 font-medium transition-colors"
               >← Previous</button>
-              
+
               {step < regions.length - 1 ? (
                 <Button onClick={() => setStep(s => s + 1)} disabled={isAnalyzing}>
                   Next Region →

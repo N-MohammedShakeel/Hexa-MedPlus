@@ -15,7 +15,7 @@ from app.api.vision import analyze_image_with_vision_ai, structure_lab_report_wi
 from app.utils.blur_detector import check_image_blur
 
 # File extensions treated as images for Vision AI processing
-IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.dcm'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.dcm', '.dicom'}
 
 def _is_image_document(file_key: str, doc_type: str) -> bool:
     """Return True if this document should be sent to Vision AI (images only)."""
@@ -282,6 +282,20 @@ async def consume_notes():
         await consumer.stop()
 
 
+async def _update_document_status(file_key: str, status: str):
+    """Pushes the final (or failed) status back to document-service once AI processing settles."""
+    try:
+        ds_base = 'http://document-service:8082' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8082'
+        async with httpx.AsyncClient(timeout=5.0) as status_client:
+            await status_client.put(
+                ds_base + "/api/documents/by-file-key/" + file_key + "/status",
+                params={"status": status}
+            )
+            log_info("Updated document status to " + status + " for " + file_key)
+    except Exception as se:
+        log_error("Failed to update document status: " + repr(se))
+
+
 async def consume_documents():
     consumer = AIOKafkaConsumer(
         'document.parsed',
@@ -331,105 +345,128 @@ async def consume_documents():
 
                 # ── 2. Vision AI for Image files ──────────────────────────
                 if _is_image_document(file_key, doc_type):
-                    vision_result = await _call_vision_api(file_key, file_url, doc_type)
-                    if vision_result and 'api_error' not in vision_result:
-                        fields = _build_analysis_fields(file_key, mrn, doc_type, vision_result, text, document_id)
-                        if 'Lab Report' in fields['ai_heading'] or doc_type == 'LAB_REPORT':
-                            log_info(f"Structuring Lab Report for {file_key}...")
-                            structured_data = await structure_lab_report_with_llama(fields['extracted_text'])
-                            if structured_data:
-                                fields['clinical_findings'] = structured_data.get('lab_findings', [])
-                                if structured_data.get('heading'):
-                                    fields['ai_heading'] = structured_data.get('heading')
-                                fields['report_summary'] = structured_data.get('summary', '')
-                                if structured_data.get('patient_info'):
-                                    fields['image_metadata'] = fields.get('image_metadata', {})
-                                    fields['image_metadata']['patient_info'] = structured_data.get('patient_info')
-                        
-                        async with AsyncSessionLocal() as session:
-                            needs_blur = fields.pop('needs_blur_annotation', False)
-                            fields.pop('document_id', None)
-                            analysis = DocumentAnalysisEntity(**fields)
-                            session.add(analysis)
-                            await session.commit()
-                        log_info(f"Vision analysis saved for {file_key} (MRN: {mrn}) — {fields.get('ai_heading')}")
+                    try:
+                        vision_result = await _call_vision_api(file_key, file_url, doc_type)
+                        if vision_result and 'api_error' not in vision_result:
+                            fields = _build_analysis_fields(file_key, mrn, doc_type, vision_result, text, document_id)
+                            if 'Lab Report' in fields['ai_heading'] or doc_type == 'LAB_REPORT':
+                                log_info(f"Structuring Lab Report for {file_key}...")
+                                structured_data = await structure_lab_report_with_llama(fields['extracted_text'])
+                                if structured_data:
+                                    fields['clinical_findings'] = structured_data.get('lab_findings', [])
+                                    if structured_data.get('heading'):
+                                        fields['ai_heading'] = structured_data.get('heading')
+                                    fields['report_summary'] = structured_data.get('summary', '')
+                                    if structured_data.get('patient_info'):
+                                        fields['image_metadata'] = fields.get('image_metadata', {})
+                                        fields['image_metadata']['patient_info'] = structured_data.get('patient_info')
 
-                        # Update document status based on blur detection result
-                        new_doc_status = 'BLUR_DETECTED' if needs_blur else 'COMPLETED'
-                        try:
-                            ds_base = 'http://document-service:8082' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8082'
-                            async with httpx.AsyncClient(timeout=5.0) as status_client:
-                                await status_client.put(
-                                    ds_base + "/api/documents/by-file-key/" + file_key + "/status",
-                                    params={"status": new_doc_status}
-                                )
-                                log_info("Updated document status to " + new_doc_status + " for " + file_key)
-                        except Exception as se:
-                            log_error("Failed to update document status: " + repr(se))
+                            # needs_blur_annotation/document_id are real columns now — keep
+                            # them in `fields` so they're actually persisted below.
+                            needs_blur = fields.get('needs_blur_annotation', False)
+                            async with AsyncSessionLocal() as session:
+                                analysis = DocumentAnalysisEntity(**fields)
+                                session.add(analysis)
+                                await session.commit()
+                            log_info(f"Vision analysis saved for {file_key} (MRN: {mrn}) — {fields.get('ai_heading')}")
 
-                        # Auto-save non-imaging docs to patient notes after Vision AI processing
-                        if doc_type not in ('LAB_REPORT', 'IMAGING', 'XRAY', 'MRI', 'CT_SCAN', 'DICOM') and fields.get('report_summary') and mrn:
-                            try:
-                                base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
-                                tag = 'CLINICAL_NOTE' if doc_type == 'CLINICAL_NOTE' else (file_key.split('-', 1)[-1] if '-' in file_key else file_key)
-                                note_payload = {"tag": tag, "content": fields['report_summary']}
-                                async with httpx.AsyncClient(timeout=10.0) as client:
-                                    resp = await client.post(base_url + "/api/clinical/patients/" + mrn + "/notes", json=note_payload)
-                                    if resp.status_code < 300:
-                                        log_info("Auto-saved " + doc_type + " to patient notes for MRN " + mrn)
-                                    else:
-                                        log_error("Auto-save note failed: " + resp.text)
-                            except Exception as note_err:
-                                log_error("Auto-save note exception: " + repr(note_err))
+                            # Update document status based on blur detection result
+                            new_doc_status = 'BLUR_DETECTED' if needs_blur else 'COMPLETED'
+                            await _update_document_status(file_key, new_doc_status)
+
+                            # Auto-save non-imaging docs to patient notes after Vision AI processing
+                            if doc_type not in ('LAB_REPORT', 'IMAGING', 'XRAY', 'MRI', 'CT_SCAN', 'DICOM') and fields.get('report_summary') and mrn:
+                                try:
+                                    base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
+                                    tag = 'CLINICAL_NOTE' if doc_type == 'CLINICAL_NOTE' else (file_key.split('-', 1)[-1] if '-' in file_key else file_key)
+                                    note_payload = {"tag": tag, "content": fields['report_summary']}
+                                    async with httpx.AsyncClient(timeout=10.0) as client:
+                                        resp = await client.post(base_url + "/api/clinical/patients/" + mrn + "/notes", json=note_payload)
+                                        if resp.status_code < 300:
+                                            log_info("Auto-saved " + doc_type + " to patient notes for MRN " + mrn)
+                                        else:
+                                            log_error("Auto-save note failed: " + resp.text)
+                                except Exception as note_err:
+                                    log_error("Auto-save note exception: " + repr(note_err))
+                        else:
+                            log_error(f"Vision AI returned no usable result for {file_key}: {vision_result}")
+                            await _update_document_status(file_key, "FAILED")
+                    except Exception as img_err:
+                        log_error(f"Image document processing failed for {file_key}: {img_err}")
+                        await _update_document_status(file_key, "FAILED")
 
                 # ── 3. Vision AI for PDF files ────────────────────────────
                 elif _is_pdf_document(file_key):
                     analysis_id = None
-                    async for page_num, total_pages, result in _process_vision_api_pdf_stream(file_key, file_url):
-                        async with AsyncSessionLocal() as session:
-                            if page_num == 0:
-                                # Create initial DB record
-                                fields = _build_analysis_fields(file_key, mrn, doc_type, {}, text)
-                                fields['image_metadata'] = fields.get('image_metadata', {})
-                                fields['image_metadata']['total_pages'] = total_pages
-                                fields['image_metadata']['processed_pages'] = 0
-                                needs_blur = fields.pop('needs_blur_annotation', False)
-                                fields.pop('document_id', None)
-                                analysis = DocumentAnalysisEntity(**fields)
-                                session.add(analysis)
-                                analysis_id = analysis.id
-                                await session.commit()
-                                log_info(f"Created new PDF page analysis record: {analysis_id}")
-                            elif result and 'api_error' not in result:
-                                # Update existing DB record
-                                existing = await session.get(DocumentAnalysisEntity, analysis_id)
-                                needs_blur = fields.pop('needs_blur_annotation', False)
-                                if existing:
-                                    ocr_text = result.get('ocr_extraction', {}).get('extracted_text', '')
-                                    if ocr_text:
-                                        existing.extracted_text = (existing.extracted_text or '') + '\n\n' + ocr_text
-
-                                    if doc_type == 'LAB_REPORT':
-                                        log_info(f"Structuring Lab Report for {file_key} Page {page_num}...")
-                                        structured = await structure_lab_report_with_llama(ocr_text)
-                                        if structured:
-                                            new_findings = structured.get('lab_findings', [])
-                                            existing.clinical_findings = (existing.clinical_findings or []) + new_findings
-                                            if structured.get('heading'):
-                                                existing.ai_heading = structured.get('heading')
-
-                                    meta = dict(existing.image_metadata or {})
-                                    meta['processed_pages'] = page_num
-                                    
-                                    # Overwrite image metadata with actual model results if it's the first real page
-                                    if page_num == 1 and result.get('image_metadata'):
-                                        model_meta = result.get('image_metadata')
-                                        meta['modality'] = model_meta.get('modality', '')
-                                        meta['body_part_or_document_type'] = model_meta.get('body_part_or_document_type', '')
-                                        
-                                    existing.image_metadata = meta
+                    any_blur = False
+                    pdf_failed = False
+                    try:
+                        async for page_num, total_pages, result in _process_vision_api_pdf_stream(file_key, file_url):
+                            async with AsyncSessionLocal() as session:
+                                if page_num == 0:
+                                    # Create initial DB record
+                                    fields = _build_analysis_fields(file_key, mrn, doc_type, {}, text, document_id)
+                                    fields['image_metadata']['total_pages'] = total_pages
+                                    fields['image_metadata']['processed_pages'] = 0
+                                    fields['needs_blur_annotation'] = False
+                                    analysis = DocumentAnalysisEntity(**fields)
+                                    session.add(analysis)
+                                    analysis_id = analysis.id
                                     await session.commit()
-                                    log_info(f"PDF Vision analysis updated for {file_key} Page {page_num}/{total_pages}")
+                                    log_info(f"Created new PDF page analysis record: {analysis_id}")
+                                elif result and 'api_error' not in result:
+                                    # Update existing DB record
+                                    existing = await session.get(DocumentAnalysisEntity, analysis_id)
+                                    page_regions = result.get('ocr_extraction', {}).get('blurry_text_regions', [])
+                                    page_needs_blur = bool(result.get('needs_blur_annotation', False) or page_regions)
+                                    if page_needs_blur:
+                                        any_blur = True
+                                    if existing:
+                                        ocr_text = result.get('ocr_extraction', {}).get('extracted_text', '')
+                                        if ocr_text:
+                                            existing.extracted_text = (existing.extracted_text or '') + '\n\n' + ocr_text
+
+                                        if page_regions:
+                                            tagged = [
+                                                {**r, 'page': page_num,
+                                                 'imgWidth': result.get('image_width'), 'imgHeight': result.get('image_height')}
+                                                for r in page_regions
+                                            ]
+                                            existing.blurry_regions = (existing.blurry_regions or []) + tagged
+
+                                        if ocr_text and doc_type == 'LAB_REPORT':
+                                            log_info(f"Structuring Lab Report for {file_key} Page {page_num}...")
+                                            structured = await structure_lab_report_with_llama(ocr_text)
+                                            if structured:
+                                                new_findings = structured.get('lab_findings', [])
+                                                existing.clinical_findings = (existing.clinical_findings or []) + new_findings
+                                                if structured.get('heading'):
+                                                    existing.ai_heading = structured.get('heading')
+
+                                        meta = dict(existing.image_metadata or {})
+                                        meta['processed_pages'] = page_num
+
+                                        # Overwrite image metadata with actual model results if it's the first real page
+                                        if page_num == 1 and result.get('image_metadata'):
+                                            model_meta = result.get('image_metadata')
+                                            meta['modality'] = model_meta.get('modality', '')
+                                            meta['body_part_or_document_type'] = model_meta.get('body_part_or_document_type', '')
+
+                                        existing.image_metadata = meta
+                                        existing.needs_blur_annotation = any_blur
+                                        await session.commit()
+                                        log_info(f"PDF Vision analysis updated for {file_key} Page {page_num}/{total_pages}")
+                    except Exception as pdf_err:
+                        log_error(f"PDF document processing failed for {file_key}: {pdf_err}")
+                        pdf_failed = True
+
+                    if analysis_id is None:
+                        # Nothing was ever persisted (e.g. PDF failed to download/open) — surface as FAILED.
+                        await _update_document_status(file_key, "FAILED")
+                    elif pdf_failed:
+                        await _update_document_status(file_key, "FAILED")
+                    else:
+                        await _update_document_status(file_key, "BLUR_DETECTED" if any_blur else "COMPLETED")
 
                 # ── 4. Text/Office documents (TXT, DOCX, CSV, etc.) ──────────
                 elif _is_text_document(file_key) and text and mrn:
@@ -465,19 +502,33 @@ async def consume_documents():
                             session.add(analysis)
                             await session.commit()
                         log_info(f"Text document analysis saved for {file_key} (MRN: {mrn})")
+                        await _update_document_status(file_key, "COMPLETED")
 
-                        # Mark document as AI_ANALYZED in document-service
-                        try:
-                            ds_base = 'http://document-service:8082' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8082'
-                            async with httpx.AsyncClient(timeout=5.0) as status_client:
-                                await status_client.put(
-                                    ds_base + "/api/documents/by-file-key/" + file_key + "/status",
-                                    params={"status": "COMPLETED"}
-                                )
-                        except Exception as se:
-                            log_error("Failed to update text document status: " + repr(se))
+                        # Auto-save non-lab text docs to patient notes, mirroring the image/PDF pipelines.
+                        # CLINICAL_NOTE is excluded — it's already auto-saved (with the raw extracted
+                        # text) by the RAG-ingestion step above, before this branch runs.
+                        if doc_type not in ('LAB_REPORT', 'CLINICAL_NOTE') and summary:
+                            try:
+                                base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
+                                tag = 'CLINICAL_NOTE' if doc_type == 'CLINICAL_NOTE' else (file_key.split('-', 1)[-1] if '-' in file_key else file_key)
+                                note_payload = {"tag": tag, "content": summary}
+                                async with httpx.AsyncClient(timeout=10.0) as client:
+                                    resp = await client.post(base_url + "/api/clinical/patients/" + mrn + "/notes", json=note_payload)
+                                    if resp.status_code < 300:
+                                        log_info("Auto-saved " + doc_type + " to patient notes for MRN " + mrn)
+                                    else:
+                                        log_error("Auto-save note failed: " + resp.text)
+                            except Exception as note_err:
+                                log_error("Auto-save note exception: " + repr(note_err))
                     except Exception as te:
                         log_error(f"Text document structuring failed for {file_key}: {te}")
+                        await _update_document_status(file_key, "FAILED")
+
+                elif _is_text_document(file_key) and (not text) and mrn:
+                    # No extractable text (e.g. an empty file) — nothing left for the AI
+                    # pipeline to do, so don't leave the document stuck in PROCESSING forever.
+                    log_info(f"Text document {file_key} had no extractable text; marking COMPLETED.")
+                    await _update_document_status(file_key, "COMPLETED")
 
             except Exception as e:
                 log_error(f"Error processing document.parsed event: {e}")

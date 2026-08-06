@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import httpx
 import base64
 import json
@@ -15,6 +15,7 @@ from app.core.db import get_db
 from app.models.document_analysis import DocumentAnalysisEntity
 from app.utils.logger import log_info, log_error
 from app.utils.blur_detector import check_image_blur
+import app.core.state as state
 import os
 
 router = APIRouter()
@@ -678,6 +679,49 @@ async def delete_vision_result_by_file_key(
     await db.commit()
     return {"status": "SUCCESS", "message": f"Deleted {len(records)} record(s)"}
 
+def _resolve_document_url(file_key: str, file_url: Optional[str] = None) -> str:
+    if file_url and 'http' in file_url:
+        resolved = file_url
+    else:
+        resolved = "http://document-service:8082/api/documents/download?fileKey=" + file_key
+    if 'postgres' not in settings.POSTGRES_HOST and 'document-service' in resolved:
+        resolved = resolved.replace('http://document-service:8082', 'http://localhost:8082')
+    return resolved
+
+
+@router.get("/pdf-page-image")
+async def get_pdf_page_image(fileKey: str, page: int = 1):
+    """
+    Renders a single page of an uploaded PDF as a PNG, at the same 1.5x render
+    matrix used during ingestion, so blur-region bounding boxes line up.
+    Used by the blur-annotation UI to show the correct page for each region.
+    """
+    try:
+        file_url = _resolve_document_url(fileKey)
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            pdf_resp = await client.get(file_url)
+            pdf_resp.raise_for_status()
+            pdf_bytes = pdf_resp.content
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            if page < 1 or page > len(doc):
+                raise HTTPException(status_code=404, detail=f"Page {page} not found in document")
+            pg = doc[page - 1]
+            mat = fitz.Matrix(1.5, 1.5)
+            pix = pg.get_pixmap(matrix=mat, alpha=False)
+            png_bytes = pix.tobytes("png")
+        finally:
+            doc.close()
+
+        return Response(content=png_bytes, media_type="image/png")
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error(f"Failed to render PDF page image for {fileKey} page {page}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class ReanalyzeVisionRequest(BaseModel):
     fileUrl: Optional[str] = None
     blurDoctorInputs: list
@@ -701,45 +745,93 @@ async def reanalyze_vision_result(
     if not record:
         raise HTTPException(status_code=404, detail="Vision AI analysis record not found")
 
+    is_pdf = record.file_key.lower().endswith('.pdf')
+
     try:
-        # ── Download original image ───────────────────────────────────────────
-        file_url = None
-        if payload.fileUrl and 'http' in payload.fileUrl:
-            file_url = payload.fileUrl
+        file_url = _resolve_document_url(record.file_key, payload.fileUrl)
+        meta = dict(record.image_metadata or {})
+
+        if is_pdf:
+            # ── PDF: re-render + re-OCR only the pages the doctor annotated ────
+            # (non-blurry pages were already OCR'd correctly during ingestion and
+            # are already sitting in record.extracted_text — no need to redo them).
+            pages_notes = {}
+            for inp in payload.blurDoctorInputs:
+                region = inp.get('region', '')
+                note_text = inp.get('text', '')
+                page_match = re.match(r'page:(\d+)', region)
+                page_num = int(page_match.group(1)) if page_match else 1
+                pages_notes.setdefault(page_num, []).append((region, note_text))
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                pdf_resp = await client.get(file_url)
+                pdf_resp.raise_for_status()
+                pdf_bytes = pdf_resp.content
+
+            pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            annotated_sections = []
+            try:
+                for page_num in sorted(pages_notes.keys()):
+                    if page_num < 1 or page_num > len(pdf_doc):
+                        continue
+                    page = pdf_doc[page_num - 1]
+                    mat = fitz.Matrix(1.5, 1.5)
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    page_bytes = pix.tobytes("png")
+
+                    log_info(f"Reanalyze Step 1 (PDF page {page_num}): calling Vision AI for OCR extraction...")
+                    page_vision = await analyze_image_with_vision_ai(page_bytes, "png", max_tokens=4096, timeout=300.0)
+                    page_ocr = ""
+                    if page_vision and 'api_error' not in page_vision:
+                        page_ocr = page_vision.get('ocr_extraction', {}).get('extracted_text', '')
+                        if page_num == 1 and page_vision.get('image_metadata'):
+                            meta.update(page_vision.get('image_metadata'))
+
+                    doctor_notes = "\n".join(
+                        "- " + region + ": " + note_text
+                        for region, note_text in pages_notes[page_num]
+                        if note_text and 'Skipped' not in note_text
+                    )
+                    section = f"[Page {page_num} — doctor-annotated]\n{page_ocr}"
+                    if doctor_notes:
+                        section += "\n\nDoctor annotations for blurry regions:\n" + doctor_notes
+                    annotated_sections.append(section)
+            finally:
+                pdf_doc.close()
+
+            ocr_text = (record.extracted_text or '').strip()
+            if annotated_sections:
+                ocr_text += "\n\n" + "\n\n".join(annotated_sections)
+            merged_text = ocr_text
         else:
-            file_url = "http://document-service:8082/api/documents/download?fileKey=" + record.file_key
+            # ── Single image: pure OCR, extract all visible text ───────────────
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                img_resp = await client.get(file_url)
+                img_resp.raise_for_status()
+                image_bytes = img_resp.content
 
-        if 'postgres' not in settings.POSTGRES_HOST and 'document-service' in file_url:
-            file_url = file_url.replace('http://document-service:8082', 'http://localhost:8082')
+            ext = record.file_key.rsplit('.', 1)[-1].lower() if '.' in record.file_key else 'jpeg'
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            img_resp = await client.get(file_url)
-            img_resp.raise_for_status()
-            image_bytes = img_resp.content
+            log_info("Reanalyze Step 1: calling Vision AI for OCR extraction...")
+            vision_result = await analyze_image_with_vision_ai(image_bytes, ext, max_tokens=4096, timeout=300.0)
 
-        ext = record.file_key.rsplit('.', 1)[-1].lower() if '.' in record.file_key else 'jpeg'
+            if not vision_result or 'api_error' in vision_result:
+                raise HTTPException(status_code=500, detail="Vision AI API failed during re-analysis Step 1")
 
-        # ── Step 1: Vision AI — pure OCR, extract all visible text ───────────
-        log_info("Reanalyze Step 1: calling Vision AI for OCR extraction...")
-        vision_result = await analyze_image_with_vision_ai(image_bytes, ext, max_tokens=4096, timeout=300.0)
+            ocr_text = vision_result.get('ocr_extraction', {}).get('extracted_text', '')
+            meta.update(vision_result.get('image_metadata', {}))
 
-        if not vision_result or 'api_error' in vision_result:
-            raise HTTPException(status_code=500, detail="Vision AI API failed during re-analysis Step 1")
+            # ── Merge OCR with doctor blur annotations ────────────────────────
+            doctor_notes = ""
+            for inp in payload.blurDoctorInputs:
+                region = inp.get('region', '')
+                note_text = inp.get('text', '')
+                if note_text and 'Skipped' not in note_text:
+                    doctor_notes += "- " + region + ": " + note_text + "\n"
 
-        ocr_text = vision_result.get('ocr_extraction', {}).get('extracted_text', '')
-        meta = vision_result.get('image_metadata', {})
-
-        # ── Merge OCR with doctor blur annotations ────────────────────────────
-        doctor_notes = ""
-        for inp in payload.blurDoctorInputs:
-            region = inp.get('region', '')
-            text = inp.get('text', '')
-            if text and 'Skipped' not in text:
-                doctor_notes += "- " + region + ": " + text + "\n"
-
-        merged_text = ocr_text
-        if doctor_notes:
-            merged_text += "\n\nDoctor annotations for blurry regions:\n" + doctor_notes
+            merged_text = ocr_text
+            if doctor_notes:
+                merged_text += "\n\nDoctor annotations for blurry regions:\n" + doctor_notes
 
         # ── Step 2: LLaMA — structure the merged text ─────────────────────────
         log_info("Reanalyze Step 2: calling LLaMA for structuring...")
@@ -773,24 +865,14 @@ async def reanalyze_vision_result(
         record.ai_heading = heading
         record.needs_blur_annotation = False
 
-        existing_meta = dict(record.image_metadata or {})
-        existing_meta.update(meta)
-        record.image_metadata = existing_meta
+        record.image_metadata = meta
 
         await db.commit()
         await db.refresh(record)
 
         # ── Update document status to COMPLETED after successful reanalysis ───
-        try:
-            ds_base = 'http://document-service:8082' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8082'
-            async with httpx.AsyncClient(timeout=5.0) as status_client:
-                await status_client.put(
-                    ds_base + "/api/documents/by-file-key/" + record.file_key + "/status",
-                    params={"status": "COMPLETED"}
-                )
-                log_info("Updated document status to COMPLETED for " + record.file_key)
-        except Exception as se:
-            log_error("Failed to update document status after reanalysis: " + repr(se))
+        from app.core.kafka_consumer import _update_document_status
+        await _update_document_status(record.file_key, "COMPLETED")
 
         # ── Auto-save non-lab docs to patient notes ──────────────────────────
         if doc_type not in ('LAB_REPORT', 'IMAGING', 'XRAY', 'MRI', 'CT_SCAN', 'DICOM') and summary and record.patient_mrn:

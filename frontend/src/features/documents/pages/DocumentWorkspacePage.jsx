@@ -147,7 +147,9 @@ export default function DocumentWorkspacePage() {
     const fetchDocs = async () => {
       try {
         const data = await clinicalService.getDocuments();
-        setDocuments(data.map(doc => ({
+        // Guideline/protocol uploads live in the Clinical Protocols workflow — they
+        // aren't patient documents and shouldn't show up in this workspace's list.
+        setDocuments(data.filter(doc => doc.documentType !== 'GUIDELINE').map(doc => ({
           id: doc.id,
           name: doc.fileName,
           fileKey: doc.fileKey,
@@ -174,7 +176,7 @@ export default function DocumentWorkspacePage() {
   const refreshDocuments = async () => {
     try {
       const data = await clinicalService.getDocuments();
-      setDocuments(data.map(doc => ({
+      setDocuments(data.filter(doc => doc.documentType !== 'GUIDELINE').map(doc => ({
         id: doc.id,
         name: doc.fileName,
         fileKey: doc.fileKey,
@@ -228,8 +230,6 @@ export default function DocumentWorkspacePage() {
 
   const filteredDocs = documents.filter(doc => {
     if (selectedCategory === 'All Documents') return true;
-    if (selectedCategory === 'Recent Uploads') return doc.status === 'PENDING' || doc.status === 'PROCESSING';
-    if (selectedCategory === 'Failed Uploads') return doc.status === 'FAILED' || doc.status === 'REQUIRES_VERIFICATION';
     return doc.category === selectedCategory;
   });
 
@@ -240,7 +240,6 @@ export default function DocumentWorkspacePage() {
       <DocumentFilters 
         selectedCategory={selectedCategory} 
         setSelectedCategory={setSelectedCategory} 
-        onUploadClick={() => document.getElementById('docWorkspaceFileInput')?.click()}
       />
 
       {/* Main Workspace */}
@@ -248,8 +247,6 @@ export default function DocumentWorkspacePage() {
         <div className="max-w-[930px] mx-auto space-y-6">
 
           <DocumentUploadZone 
-            selectedCategory={selectedCategory} 
-            setSelectedCategory={setSelectedCategory} 
             allPatients={allPatients} 
             refreshDocuments={refreshDocuments} 
           />

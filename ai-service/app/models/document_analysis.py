@@ -23,4 +23,6 @@ class DocumentAnalysisEntity(Base):
     image_height = Column(Float, nullable=True)
     model_used = Column(String, nullable=True)
     verified = Column(Boolean, default=False)
+    needs_blur_annotation = Column(Boolean, default=False)
+    document_id = Column(String, nullable=True, index=True)
     analyzed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
