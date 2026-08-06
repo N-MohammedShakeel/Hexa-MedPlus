@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Upload, AlertCircle, Loader2, Download, Terminal } from 'lucide-react';
+import { Upload, AlertCircle, Loader2, Terminal } from 'lucide-react';
 import { Button, Input } from '../../../components/ui';
 import Card from '../../../components/ui/Card';
 import axiosInstance from '../../../config/axios';
+import { notifyError } from '../../../common/utils/toast';
 
 export default function DocumentUploadZone({ selectedCategory, setSelectedCategory, allPatients, refreshDocuments }) {
   const [stagedFile, setStagedFile] = useState(null);
@@ -42,12 +43,12 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
     const file = fileToUpload || stagedFile;
     if (!file) return;
     if (!mrnInput) {
-      alert('Please select a Target Patient MRN before uploading.');
+      notifyError('Please select a Target Patient MRN before uploading.');
       return;
     }
     // Require custom name for Other Documents
     if ((selectedCategory === 'Other Documents' || !['Clinical Notes','Lab Reports','Imaging','Recent Uploads','Failed Uploads','All Documents'].includes(selectedCategory)) && !customDocName.trim()) {
-      alert('Please enter a document name for Other Documents before uploading.');
+      notifyError('Please enter a document name for Other Documents before uploading.');
       return;
     }
     
@@ -113,9 +114,6 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" icon={Download}>
-            Download Template
-          </Button>
           <Button icon={Upload} onClick={() => document.getElementById('docWorkspaceFileInput').click()}>
             Upload Files
           </Button>
@@ -125,7 +123,7 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-            <Upload className="w-4 h-4 text-primary-600" /> Upload New Document
+            <Upload className="w-4 h-4 text-primary-600 dark:text-primary-400" /> Upload New Document
           </h3>
           {stagedFile && (
             <Button size="sm" onClick={() => doUpload()} disabled={uploading}>
@@ -136,7 +134,7 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
 
         <div className="space-y-4">
           {stagedFile ? (
-            <div className="bg-primary-50 dark:bg-slate-800 border border-primary-200 dark:border-slate-700 rounded-lg p-4 flex items-center justify-between">
+            <div className="bg-primary-50 dark:bg-slate-800 border border-primary-200 dark:border-slate-700 rounded-8 p-4 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-primary-900 dark:text-slate-100">{stagedFile.name}</p>
                 <p className="text-xs text-primary-700 dark:text-slate-400 mt-1">
@@ -147,7 +145,7 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
             </div>
           ) : (
             <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+              className={`border-2 border-dashed rounded-8 p-8 text-center transition-colors cursor-pointer ${
                 isDragOver
                   ? 'border-primary-500 bg-primary-50 dark:bg-slate-800 dark:border-primary-400'
                   : 'border-neutral-300 dark:border-slate-700 hover:border-primary-400 hover:bg-neutral-50 dark:hover:bg-slate-800'
@@ -166,9 +164,7 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
                 style={{ display: 'none' }}
               />
               <div className="flex flex-col items-center gap-3">
-                <div className="w-12 h-12 bg-info-100 rounded-12 flex items-center justify-center">
-                  <Upload className="w-6 h-6 text-primary-600" />
-                </div>
+                <Upload className="w-8 h-8 text-primary-600 dark:text-primary-400" />
                 <div>
                   <p className="text-sm font-medium text-neutral-900 dark:text-slate-200">
                     Drag & drop files here to stage
@@ -201,7 +197,7 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
                   required
                 />
                 {patientSearchTerm && !mrnInput && (
-                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-700 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-700 rounded-6 shadow-lg max-h-48 overflow-y-auto">
                     {allPatients
                       .filter(p => p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) || p.mrn.toLowerCase().includes(patientSearchTerm.toLowerCase()))
                       .map(p => (
@@ -213,11 +209,11 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
                             setPatientSearchTerm(`${p.name} (${p.mrn})`);
                           }}
                         >
-                          <span className="font-semibold">{p.name}</span> <span className="text-neutral-500">({p.mrn})</span>
+                          <span className="font-semibold">{p.name}</span> <span className="text-neutral-500 dark:text-slate-400">({p.mrn})</span>
                         </button>
                       ))}
                     {allPatients.filter(p => p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) || p.mrn.toLowerCase().includes(patientSearchTerm.toLowerCase())).length === 0 && (
-                      <div className="px-4 py-2 text-sm text-neutral-500">No matching patients found.</div>
+                      <div className="px-4 py-2 text-sm text-neutral-500 dark:text-slate-400">No matching patients found.</div>
                     )}
                   </div>
                 )}
@@ -265,14 +261,14 @@ export default function DocumentUploadZone({ selectedCategory, setSelectedCatego
               Processing Log
             </h3>
             {uploading && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500 ml-auto" />}
-            {!uploading && <button onClick={() => setProgressLog([])} className="ml-auto text-xs text-neutral-500 hover:text-neutral-700">Clear</button>}
+            {!uploading && <button onClick={() => setProgressLog([])} className="ml-auto text-xs text-neutral-500 dark:text-slate-400 hover:text-neutral-700 dark:hover:text-slate-200">Clear</button>}
           </div>
           <div className="bg-slate-900 rounded-4 p-4 font-mono text-xs space-y-1.5 max-h-44 overflow-y-auto">
             {progressLog.map((line, i) => (
               <div key={i} className={`leading-relaxed ${
-                line.includes('⚠') ? 'text-amber-400'
-                : line.includes('✗') || line.includes('error') || line.includes('Error') ? 'text-red-400'
-                : line.includes('complete') || line.includes('Complete') ? 'text-green-400'
+                line.includes('⚠') ? 'text-warning-500'
+                : line.includes('✗') || line.includes('error') || line.includes('Error') ? 'text-danger-500'
+                : line.includes('complete') || line.includes('Complete') ? 'text-success-500'
                 : 'text-slate-300'
               }`}>{line}</div>
             ))}

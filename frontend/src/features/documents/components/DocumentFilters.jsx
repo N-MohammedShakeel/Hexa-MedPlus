@@ -7,9 +7,7 @@ export default function DocumentFilters({ selectedCategory, setSelectedCategory,
       {/* Sidebar Header */}
       <div className="p-4 pb-4 border-b border-neutral-500 dark:border-slate-800 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-info-100 rounded-12 flex items-center justify-center">
-            <FileText className="w-5 h-5 text-primary-600" />
-          </div>
+          <FileText className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0" />
           <div>
             <h2 className="text-lg font-semibold text-primary-600 dark:text-primary-400">Document Workspace</h2>
             <p className="text-xs font-semibold text-neutral-800 dark:text-slate-400">

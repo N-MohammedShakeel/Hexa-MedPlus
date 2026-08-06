@@ -158,16 +158,16 @@ export default function HeroSection({ scrollY }) {
             }}
           />
           {/* Pastel glow orbs */}
-          <div className="absolute top-16 left-1/4 w-[500px] h-[500px] bg-primary-200/40 blur-[120px] rounded-full" />
-          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-200/30 blur-[100px] rounded-full" />
-          <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-violet-200/30 blur-[80px] rounded-full" />
+          <div className="absolute top-16 left-1/4 w-[500px] h-[500px] bg-primary-200/40 dark:bg-primary-500/10 blur-[120px] rounded-full" />
+          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-200/30 dark:bg-indigo-500/10 blur-[100px] rounded-full" />
+          <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-violet-200/30 dark:bg-violet-500/10 blur-[80px] rounded-full" />
           <ParticleField />
         </div>
 
         <div className="container mx-auto relative z-10 text-center max-w-5xl">
 
           {/* Live badge */}
-          <div className="lp-slide-up inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-primary-50 border border-primary-200 text-sm font-semibold text-primary-700 mb-8 shadow-sm" style={{ animationDelay: "0.1s" }}>
+          <div className="lp-slide-up inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 text-sm font-semibold text-primary-700 dark:text-primary-300 mb-8 shadow-sm" style={{ animationDelay: "0.1s" }}>
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500" />
@@ -176,7 +176,7 @@ export default function HeroSection({ scrollY }) {
           </div>
 
           {/* Headline */}
-          <h1 className="lp-slide-up text-5xl md:text-7xl font-black tracking-tight mb-6 leading-[1.06] text-transparent bg-clip-text bg-gradient-to-b from-neutral-900 to-neutral-600" style={{ animationDelay: "0.2s" }}>
+          <h1 className="lp-slide-up text-5xl md:text-7xl font-black tracking-tight mb-6 leading-[1.06] text-transparent bg-clip-text bg-gradient-to-b from-neutral-900 to-neutral-600 dark:from-neutral-100 dark:to-neutral-400" style={{ animationDelay: "0.2s" }}>
             Clinical Intelligence<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 via-indigo-600 to-violet-600">
               Reimagined.
@@ -193,7 +193,7 @@ export default function HeroSection({ scrollY }) {
             ]} />
           </div>
 
-          <p className="lp-slide-up text-lg md:text-xl text-neutral-500 mb-10 max-w-2xl mx-auto leading-relaxed" style={{ animationDelay: "0.4s" }}>
+          <p className="lp-slide-up text-lg md:text-xl text-neutral-500 dark:text-neutral-400 mb-10 max-w-2xl mx-auto leading-relaxed" style={{ animationDelay: "0.4s" }}>
             The physician-in-the-loop AI platform that ingests patient data, generates clinical summaries,
             recommends diagnostic pathways, and automates medical billing — all with full explainability.
           </p>
@@ -209,7 +209,7 @@ export default function HeroSection({ scrollY }) {
             </button>
             <button
               onClick={() => navigate("/login")}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white border border-neutral-200 text-neutral-800 font-bold text-lg flex items-center justify-center gap-2 hover:bg-neutral-50 hover:border-neutral-300 shadow-sm hover:shadow-md transition-all"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-100 font-bold text-lg flex items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600 shadow-sm hover:shadow-md transition-all"
             >
               <Play className="w-4 h-4 text-primary-500" />
               View Live Demo
@@ -241,45 +241,45 @@ export default function HeroSection({ scrollY }) {
 
         {/* App Mockup */}
         <div className="container mx-auto mt-6 max-w-5xl relative z-10 lp-slide-up" style={{ animationDelay: "0.6s" }}>
-          <div className="rounded-2xl border border-neutral-200 bg-white shadow-[0_8px_60px_rgba(0,82,204,0.12)] overflow-hidden hover:shadow-[0_16px_80px_rgba(0,82,204,0.18)] transition-shadow duration-500">
+          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-[0_8px_60px_rgba(0,82,204,0.12)] overflow-hidden hover:shadow-[0_16px_80px_rgba(0,82,204,0.18)] transition-shadow duration-500">
             {/* Browser bar */}
-            <div className="h-12 border-b border-neutral-100 flex items-center px-4 gap-2 bg-neutral-50">
+            <div className="h-12 border-b border-neutral-100 dark:border-neutral-800 flex items-center px-4 gap-2 bg-neutral-50 dark:bg-neutral-800">
               <div className="flex gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-rose-400" />
                 <div className="w-3 h-3 rounded-full bg-amber-400" />
                 <div className="w-3 h-3 rounded-full bg-emerald-400" />
               </div>
-              <div className="ml-4 px-3 py-1 rounded-md bg-white border border-neutral-200 text-xs text-neutral-400 flex items-center gap-2 shadow-sm">
-                <Lock className="w-3 h-3 text-neutral-300" />
+              <div className="ml-4 px-3 py-1 rounded-md bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-400 dark:text-neutral-500 flex items-center gap-2 shadow-sm">
+                <Lock className="w-3 h-3 text-neutral-300 dark:text-neutral-600" />
                 https://app.hexamedplus.ai/workspace
               </div>
               <div className="ml-auto flex items-center gap-2">
-                <div className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-600 text-[10px] font-bold">
+                <div className="px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
                   ● LIVE AI
                 </div>
               </div>
             </div>
 
             {/* Workspace content */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 bg-neutral-50/50">
+            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4 bg-neutral-50/50 dark:bg-neutral-800/30">
               {/* Patient list */}
               <div className="col-span-1 space-y-3">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-4">Active Patients</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-4">Active Patients</div>
                 {[
                   { name: "James Wilson", mrn: "MRN-849201", status: "In Progress", dot: "bg-amber-500", bar: "bg-amber-400", pct: "65%" },
                   { name: "Maria Garcia", mrn: "MRN-339201", status: "Pending Review", dot: "bg-blue-500", bar: "bg-blue-400", pct: "40%" },
                   { name: "Robert Chen", mrn: "MRN-112948", status: "Signed", dot: "bg-emerald-500", bar: "bg-emerald-400", pct: "100%" },
                 ].map((p, i) => (
-                  <div key={i} className={`p-3 rounded-xl bg-white border flex flex-col gap-2 ${i === 0 ? 'border-primary-200 shadow-sm shadow-primary-100' : 'border-neutral-100'}`}>
+                  <div key={i} className={`p-3 rounded-xl bg-white dark:bg-neutral-900 border flex flex-col gap-2 ${i === 0 ? 'border-primary-200 dark:border-primary-800 shadow-sm shadow-primary-100 dark:shadow-primary-900/30' : 'border-neutral-100 dark:border-neutral-700'}`}>
                     <div className="flex justify-between items-center">
-                      <div className="text-xs font-semibold text-neutral-800">{p.name}</div>
+                      <div className="text-xs font-semibold text-neutral-800 dark:text-neutral-100">{p.name}</div>
                       <div className="flex items-center gap-1">
                         <div className={`w-1.5 h-1.5 rounded-full ${p.dot}`} />
-                        <div className="text-[9px] font-medium text-neutral-400">{p.status}</div>
+                        <div className="text-[9px] font-medium text-neutral-400 dark:text-neutral-500">{p.status}</div>
                       </div>
                     </div>
-                    <div className="text-[9px] text-neutral-400 font-mono">{p.mrn}</div>
-                    <div className="h-1 bg-neutral-100 rounded-full overflow-hidden">
+                    <div className="text-[9px] text-neutral-400 dark:text-neutral-500 font-mono">{p.mrn}</div>
+                    <div className="h-1 bg-neutral-100 dark:bg-neutral-700 rounded-full overflow-hidden">
                       <div className={`h-1 rounded-full ${p.bar}`} style={{ width: p.pct }} />
                     </div>
                   </div>
@@ -287,61 +287,61 @@ export default function HeroSection({ scrollY }) {
               </div>
 
               {/* Main workspace */}
-              <div className="col-span-1 md:col-span-2 rounded-xl bg-white border border-neutral-100 p-4 shadow-sm flex flex-col">
+              <div className="col-span-1 md:col-span-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 p-4 shadow-sm flex flex-col">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <div className="text-sm font-bold text-neutral-900">James Wilson — Encounter</div>
-                    <div className="text-[10px] text-neutral-400">Office Visit · Today · Dr. Sarah Chen</div>
+                    <div className="text-sm font-bold text-neutral-900 dark:text-neutral-100">James Wilson — Encounter</div>
+                    <div className="text-[10px] text-neutral-400 dark:text-neutral-500">Office Visit · Today · Dr. Sarah Chen</div>
                   </div>
                   <div className="flex gap-2">
-                    <div className="h-7 px-3 rounded-lg bg-neutral-100 text-[10px] text-neutral-500 flex items-center font-medium">Save Draft</div>
+                    <div className="h-7 px-3 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center font-medium">Save Draft</div>
                     <div className="h-7 px-3 rounded-lg bg-primary-600 text-[10px] text-white font-semibold flex items-center">Sign Encounter</div>
                   </div>
                 </div>
 
                 <div className="flex-1 space-y-3">
-                  <div className="p-3 rounded-lg bg-violet-50 border border-violet-100">
+                  <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900">
                     <div className="flex items-center gap-2 mb-2">
                       <Sparkles className="w-3 h-3 text-violet-500" />
-                      <div className="text-[10px] font-bold text-violet-600 uppercase tracking-wider">AI SOAP Summary</div>
+                      <div className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-wider">AI SOAP Summary</div>
                     </div>
-                    <div className="h-2 w-full bg-violet-200 rounded mb-1.5" />
-                    <div className="h-2 w-4/5 bg-violet-100 rounded mb-1.5" />
-                    <div className="h-2 w-full bg-violet-200 rounded" />
+                    <div className="h-2 w-full bg-violet-200 dark:bg-violet-800 rounded mb-1.5" />
+                    <div className="h-2 w-4/5 bg-violet-100 dark:bg-violet-900 rounded mb-1.5" />
+                    <div className="h-2 w-full bg-violet-200 dark:bg-violet-800 rounded" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
+                    <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900">
                       <div className="flex items-center gap-1.5 mb-2">
                         <Code2 className="w-3 h-3 text-blue-500" />
-                        <div className="text-[10px] font-bold text-blue-600">ICD-10 Codes</div>
+                        <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400">ICD-10 Codes</div>
                       </div>
-                      <div className="text-[9px] font-mono text-neutral-500 bg-white p-1.5 rounded border border-blue-100">E11.9 · I10</div>
+                      <div className="text-[9px] font-mono text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-900 p-1.5 rounded border border-blue-100 dark:border-blue-900">E11.9 · I10</div>
                       <div className="mt-2 flex gap-1.5">
-                        <div className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">✓ 98%</div>
-                        <div className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">✓ 95%</div>
+                        <div className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-semibold">✓ 98%</div>
+                        <div className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-semibold">✓ 95%</div>
                       </div>
                     </div>
-                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900">
                       <div className="flex items-center gap-1.5 mb-2">
                         <Brain className="w-3 h-3 text-amber-500" />
-                        <div className="text-[10px] font-bold text-amber-600">Diagnoses</div>
+                        <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Diagnoses</div>
                       </div>
                       <div className="space-y-1.5">
-                        <div className="h-2 w-full bg-amber-200 rounded" />
-                        <div className="h-2 w-3/4 bg-amber-100 rounded" />
+                        <div className="h-2 w-full bg-amber-200 dark:bg-amber-800 rounded" />
+                        <div className="h-2 w-3/4 bg-amber-100 dark:bg-amber-900 rounded" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-lg bg-rose-50 border border-rose-100">
+                  <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900">
                     <div className="flex items-center gap-1.5 mb-2">
                       <BarChart3 className="w-3 h-3 text-rose-500" />
-                      <div className="text-[10px] font-bold text-rose-600">Critical Lab Values</div>
+                      <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400">Critical Lab Values</div>
                     </div>
                     <div className="flex gap-3 text-[9px]">
-                      <span className="text-rose-700 font-mono">HbA1c: <span className="font-bold">8.2% ↑</span></span>
-                      <span className="text-amber-700 font-mono">Glucose: <span className="font-bold">145 mg/dL ↑</span></span>
+                      <span className="text-rose-700 dark:text-rose-400 font-mono">HbA1c: <span className="font-bold">8.2% ↑</span></span>
+                      <span className="text-amber-700 dark:text-amber-400 font-mono">Glucose: <span className="font-bold">145 mg/dL ↑</span></span>
                     </div>
                   </div>
                 </div>

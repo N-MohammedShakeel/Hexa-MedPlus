@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { appendProtocolToPlan } from "../../../store/slices/clinicalSlice";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
-import { ShieldCheck, Plus, ExternalLink, Activity } from 'lucide-react';
+import { ShieldCheck, Plus, Activity } from 'lucide-react';
 
 export default function ProtocolMatchPanel() {
   const dispatch = useDispatch();
@@ -19,9 +19,9 @@ export default function ProtocolMatchPanel() {
           <h3 className="text-sm font-bold text-primary-800 dark:text-primary-300">Searching Evidence-Based Protocols...</h3>
         </div>
         <div className="space-y-2">
-          <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded animate-pulse w-3/4"></div>
-          <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded animate-pulse w-5/6"></div>
-          <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded animate-pulse w-1/2"></div>
+          <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded-6 animate-pulse w-3/4"></div>
+          <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded-6 animate-pulse w-5/6"></div>
+          <div className="h-3 bg-primary-200 dark:bg-primary-800 rounded-6 animate-pulse w-1/2"></div>
         </div>
       </Card>
     );
@@ -38,7 +38,7 @@ export default function ProtocolMatchPanel() {
   };
 
   return (
-    <Card padding="md" className="border-success-200 dark:border-success-800/50 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden">
+    <Card padding="md" className="border-success-100 dark:border-success-500/30 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden">
       {/* Decorative top border */}
       <div className="absolute top-0 left-0 w-full h-1 bg-success-500"></div>
       
@@ -51,13 +51,12 @@ export default function ProtocolMatchPanel() {
         </div>
         
         {/* Trusted Source Badge */}
-        <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-400 px-2 py-1 rounded border border-success-200 dark:border-success-700/50">
+        <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-success-50 dark:bg-success-500/10 text-success-700 dark:text-success-500 px-2 py-1 rounded-6 border border-success-100 dark:border-success-700/50">
           Source: {protocolMatch.source}
-          <ExternalLink className="w-3 h-3 ml-1" />
         </div>
       </div>
 
-      <div className="text-sm text-neutral-700 dark:text-slate-300 leading-relaxed mb-4 p-3 bg-neutral-50 dark:bg-slate-800/50 rounded-lg border border-neutral-200 dark:border-slate-700">
+      <div className="text-sm text-neutral-700 dark:text-slate-300 leading-relaxed mb-4 p-3 bg-neutral-50 dark:bg-slate-800/50 rounded-8 border border-neutral-200 dark:border-slate-700">
         <p className="font-medium mb-2 text-neutral-900 dark:text-slate-200">Recommendation:</p>
         {protocolMatch.protocolSnippet}
         
@@ -71,13 +70,13 @@ export default function ProtocolMatchPanel() {
       </div>
 
       <div className="flex justify-end">
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="secondary"
+          size="sm"
           icon={Plus} 
           onClick={handleApply}
           disabled={!aiSummary}
-          className="text-success-700 border-success-300 hover:bg-success-50 dark:text-success-400 dark:border-success-700 dark:hover:bg-success-900/20"
+          className="text-success-700 border-success-100 hover:bg-success-50 dark:text-success-500 dark:border-success-700 dark:hover:bg-success-500/20"
         >
           Apply to Chart
         </Button>

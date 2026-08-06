@@ -31,6 +31,16 @@ def _is_pdf_document(file_key: str) -> bool:
     ext = '.' + file_key.rsplit('.', 1)[-1].lower() if '.' in file_key else ''
     return ext == '.pdf'
 
+# File extensions treated as plain-text documents (no Vision AI, but need LLaMA structuring)
+TEXT_EXTENSIONS = {'.txt', '.csv', '.docx', '.doc', '.xlsx', '.xls', '.rtf'}
+
+def _is_text_document(file_key: str) -> bool:
+    """Return True if the file is a text/office document (not image, not PDF)."""
+    if not file_key:
+        return False
+    ext = '.' + file_key.rsplit('.', 1)[-1].lower() if '.' in file_key else ''
+    return ext in TEXT_EXTENSIONS
+
 def _generate_ai_heading(analysis_result: dict, doc_type: str) -> str:
     """Auto-generate a clean human-readable heading from Vision AI result."""
     meta = analysis_result.get('image_metadata', {})
@@ -128,7 +138,7 @@ async def _call_vision_api(file_key: str, file_url: str = None, doc_type: str = 
         if 'postgres' not in settings.POSTGRES_HOST and 'minio' in file_url:
             file_url = file_url.replace('http://minio:', 'http://localhost:')
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             img_resp = await client.get(file_url)
             img_resp.raise_for_status()
             image_bytes = img_resp.content
@@ -276,7 +286,14 @@ async def consume_documents():
     consumer = AIOKafkaConsumer(
         'document.parsed',
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-        group_id="ai-engine-document-group"
+        group_id="ai-engine-document-group",
+        # Vision AI calls (NVIDIA NIM) can take 5-10 min for large images.
+        # Default max_poll_interval_ms=300000 (5 min) causes the coordinator to
+        # evict this consumer mid-processing and cancel the in-flight HTTP request.
+        # Raise it to 20 minutes to give the Vision AI enough headroom.
+        max_poll_interval_ms=1200000,
+        session_timeout_ms=60000,
+        heartbeat_interval_ms=20000,
     )
     await consumer.start()
     try:
@@ -331,6 +348,7 @@ async def consume_documents():
                         
                         async with AsyncSessionLocal() as session:
                             needs_blur = fields.pop('needs_blur_annotation', False)
+                            fields.pop('document_id', None)
                             analysis = DocumentAnalysisEntity(**fields)
                             session.add(analysis)
                             await session.commit()
@@ -376,6 +394,7 @@ async def consume_documents():
                                 fields['image_metadata']['total_pages'] = total_pages
                                 fields['image_metadata']['processed_pages'] = 0
                                 needs_blur = fields.pop('needs_blur_annotation', False)
+                                fields.pop('document_id', None)
                                 analysis = DocumentAnalysisEntity(**fields)
                                 session.add(analysis)
                                 analysis_id = analysis.id
@@ -411,6 +430,54 @@ async def consume_documents():
                                     existing.image_metadata = meta
                                     await session.commit()
                                     log_info(f"PDF Vision analysis updated for {file_key} Page {page_num}/{total_pages}")
+
+                # ── 4. Text/Office documents (TXT, DOCX, CSV, etc.) ──────────
+                elif _is_text_document(file_key) and text and mrn:
+                    log_info(f"Text document detected: {file_key} (type={doc_type}). Running LLaMA structuring...")
+                    try:
+                        if doc_type == 'LAB_REPORT':
+                            structured = await structure_lab_report_with_llama(text)
+                        else:
+                            structured = await structure_clinical_note_with_llama(text)
+
+                        ai_heading = (structured.get('heading') if structured else None) or f"{doc_type.replace('_', ' ').title()} — {file_key.rsplit('-', 1)[-1] if '-' in file_key else file_key}"
+                        findings = structured.get('lab_findings', []) if doc_type == 'LAB_REPORT' else []
+                        summary = structured.get('summary', '') if structured else ''
+
+                        fields = {
+                            'file_key': file_key,
+                            'patient_mrn': mrn,
+                            'document_type': doc_type,
+                            'extracted_text': text,
+                            'native_extracted_text': text,
+                            'report_summary': summary,
+                            'ai_heading': ai_heading,
+                            'clinical_findings': findings,
+                            'image_metadata': {},
+                            'blurry_regions': [],
+                            'blur_doctor_inputs': [],
+                            'image_width': None,
+                            'image_height': None,
+                            'model_used': 'text-structuring-llama',
+                        }
+                        async with AsyncSessionLocal() as session:
+                            analysis = DocumentAnalysisEntity(**fields)
+                            session.add(analysis)
+                            await session.commit()
+                        log_info(f"Text document analysis saved for {file_key} (MRN: {mrn})")
+
+                        # Mark document as AI_ANALYZED in document-service
+                        try:
+                            ds_base = 'http://document-service:8082' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8082'
+                            async with httpx.AsyncClient(timeout=5.0) as status_client:
+                                await status_client.put(
+                                    ds_base + "/api/documents/by-file-key/" + file_key + "/status",
+                                    params={"status": "COMPLETED"}
+                                )
+                        except Exception as se:
+                            log_error("Failed to update text document status: " + repr(se))
+                    except Exception as te:
+                        log_error(f"Text document structuring failed for {file_key}: {te}")
 
             except Exception as e:
                 log_error(f"Error processing document.parsed event: {e}")

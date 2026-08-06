@@ -108,6 +108,7 @@ public class NoteService {
         return Mono.fromRunnable(() -> {
             noteRepository.deleteById(UUID.fromString(noteId));
             log.info("Note deleted successfully. Note ID: {}", noteId);
+            noteEventPublisher.publishNoteDeletedEvent(noteId);
         })
         .subscribeOn(Schedulers.boundedElastic())
         .then();

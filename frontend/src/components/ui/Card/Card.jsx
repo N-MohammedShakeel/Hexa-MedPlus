@@ -18,7 +18,7 @@ export default function Card({
   return (
     <div
       className={cn(
-        "bg-white dark:bg-slate-900 border border-neutral-500 dark:border-slate-800 rounded-8 shadow-card",
+        "bg-white dark:bg-neutral-900 border border-neutral-500 dark:border-neutral-800 rounded-8 shadow-card",
         paddingClasses[padding],
         hover && "hover:shadow-md transition-shadow duration-200",
         className,

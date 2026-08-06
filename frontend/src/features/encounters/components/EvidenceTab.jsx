@@ -10,14 +10,14 @@ export default function EvidenceTab({ activeTab, setActiveTab }) {
     ];
 
     return (
-        <div className="flex border-b border-neutral-400 bg-neutral-100 px-4 pt-2">
+        <div className="flex border-b border-neutral-400 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-4 pt-2">
             {tabs.map((tab) => (
                 <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                            ? "border-primary-500 text-primary-600"
-                            : "border-transparent text-neutral-600 hover:text-neutral-900"
+                            ? "border-primary-500 text-primary-600 dark:text-primary-400"
+                            : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
                         }`}
                 >
                     <tab.Icon className="w-4 h-4" />

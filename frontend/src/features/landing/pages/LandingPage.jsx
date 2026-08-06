@@ -18,7 +18,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-neutral-900 font-sans overflow-x-hidden selection:bg-primary-100">
+    <div className="min-h-screen bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans overflow-x-hidden selection:bg-primary-100 dark:selection:bg-primary-900/50">
 
       {/* ── Global CSS ── */}
       <style>{`
@@ -50,30 +50,30 @@ export default function LandingPage() {
       `}</style>
 
       {/* ── Navigation ── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-neutral-100 shadow-sm">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate("/")}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center shadow-md shadow-primary-200">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center shadow-md shadow-primary-200 dark:shadow-primary-900/40">
               <HeartPulse className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-neutral-900">
+            <span className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
               Hexa <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">MedPlus</span>
             </span>
           </div>
 
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-500">
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-500 dark:text-neutral-400">
             {[["#features", "Capabilities"], ["#workflow", "Workflow"], ["#ecosystem", "Ecosystem"], ["#testimonials", "Testimonials"]].map(([href, label]) => (
-              <a key={href} href={href} className="hover:text-primary-600 transition-colors">{label}</a>
+              <a key={href} href={href} className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">{label}</a>
             ))}
           </div>
 
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/login")} className="text-sm font-semibold text-neutral-600 hover:text-neutral-900 transition-colors px-3 py-2 rounded-lg hover:bg-neutral-100">
+            <button onClick={() => navigate("/login")} className="text-sm font-semibold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors px-3 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
               Sign In
             </button>
             <button
               onClick={() => navigate("/register")}
-              className="text-sm font-bold bg-gradient-to-r from-primary-600 to-indigo-600 text-white px-4 py-2.5 rounded-xl hover:from-primary-500 hover:to-indigo-500 transition-all shadow-md shadow-primary-200 hover:shadow-primary-300"
+              className="text-sm font-bold bg-gradient-to-r from-primary-600 to-indigo-600 text-white px-4 py-2.5 rounded-xl hover:from-primary-500 hover:to-indigo-500 transition-all shadow-md shadow-primary-200 dark:shadow-primary-900/40 hover:shadow-primary-300 dark:hover:shadow-primary-800/40"
             >
               Request Access
             </button>

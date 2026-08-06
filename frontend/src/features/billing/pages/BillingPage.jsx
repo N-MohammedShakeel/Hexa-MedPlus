@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../../../components/ui/Card';
 import Button from '../../../components/ui/Button';
-import { CreditCard, CheckCircle2, Clock, Search, ChevronRight, Calendar, User, DollarSign, Loader2 } from 'lucide-react';
+import StatusBadge from '../../../components/ui/Badge';
+import EmptyState from '../../../components/ui/EmptyState';
+import { CreditCard, CheckCircle2, Clock, Search, ChevronRight, Calendar, DollarSign, Loader2 } from 'lucide-react';
 import Input from '../../../components/ui/Input';
 import apiClient from '../../../services/api/apiClient';
 import { useSelector } from 'react-redux';
@@ -12,16 +14,8 @@ import { useAllEncounters } from '../../../common/hooks/useEncounters';
 import { toast } from 'react-toastify';
 
 const STATUS_CONFIG = {
-  BILLING_READY: {
-    label: 'Ready to Bill',
-    cls: 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
-    dot: 'bg-amber-400',
-  },
-  BILLED: {
-    label: 'Billed & Archived',
-    cls: 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700',
-    dot: 'bg-emerald-400',
-  },
+  BILLING_READY: { label: 'Ready to Bill', status: 'warning' },
+  BILLED: { label: 'Billed & Archived', status: 'success' },
 };
 
 export default function BillingPage() {
@@ -36,6 +30,9 @@ export default function BillingPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('BILLING_READY');
   const [processing, setProcessing] = useState(null);
+  // Encounter ids marked billed in this session — lets the list update
+  // immediately without a disruptive full-page reload.
+  const [billedOverrides, setBilledOverrides] = useState(() => new Set());
 
   useEffect(() => {
     if (patientStatus === 'idle') dispatch(fetchPatients());
@@ -50,16 +47,19 @@ export default function BillingPage() {
 
   // Filter only billing-relevant encounters
   const encounters = useMemo(() =>
-    allEncounters.filter(e => e.status === 'BILLING_READY' || e.status === 'BILLED'),
-    [allEncounters]
+    allEncounters
+      .filter(e => e.status === 'BILLING_READY' || e.status === 'BILLED')
+      .map(e => billedOverrides.has(e.id) ? { ...e, status: 'BILLED' } : e),
+    [allEncounters, billedOverrides]
   );
 
   const handleMarkBilled = async (encounter) => {
     setProcessing(encounter.id);
     try {
       await apiClient.put(`/encounters/${encounter.id}/status`, { status: 'BILLED' });
-      // Optimistically update local state
-      window.location.reload(); // Simple refresh to reflect updated status
+      // Reflect the change locally instead of a full page reload so the
+      // toast is actually visible and search/filter state isn't lost.
+      setBilledOverrides(prev => new Set(prev).add(encounter.id));
       toast.success('Encounter marked as billed and archived!');
     } catch (err) {
       toast.error('Failed to update billing status');
@@ -100,20 +100,16 @@ export default function BillingPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Ready to Bill', value: readyCount, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-          { label: 'Billed & Archived', value: billedCount, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: 'Total Claims', value: encounters.length, icon: DollarSign, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-900/20' },
+          { label: 'Ready to Bill', value: readyCount, icon: Clock, color: 'text-warning-500' },
+          { label: 'Billed & Archived', value: billedCount, icon: CheckCircle2, color: 'text-success-500' },
+          { label: 'Total Claims', value: encounters.length, icon: DollarSign, color: 'text-primary-500' },
         ].map(s => (
           <Card key={s.label} padding="md">
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl ${s.bg} flex items-center justify-center flex-shrink-0`}>
-                <s.icon className={`w-6 h-6 ${s.color}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-neutral-900 dark:text-white">{s.value}</p>
-                <p className="text-xs text-neutral-600 dark:text-slate-400">{s.label}</p>
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-neutral-800 dark:text-slate-400">{s.label}</span>
+              <s.icon className={`w-5 h-5 ${s.color}`} />
             </div>
+            <p className="text-2xl font-bold text-neutral-900 dark:text-white">{s.value}</p>
           </Card>
         ))}
       </div>
@@ -137,9 +133,9 @@ export default function BillingPage() {
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              className={`px-4 py-2 rounded-6 text-xs font-semibold transition-colors ${
                 filter === f.key
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-500 text-white'
                   : 'bg-neutral-100 dark:bg-slate-800 text-neutral-700 dark:text-slate-300 hover:bg-neutral-200 dark:hover:bg-slate-700'
               }`}
             >
@@ -156,10 +152,11 @@ export default function BillingPage() {
             <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <CreditCard className="w-10 h-10 text-neutral-300 dark:text-slate-600" />
-            <p className="text-sm text-neutral-500 dark:text-slate-400">No encounters found for the selected filter.</p>
-          </div>
+          <EmptyState
+            icon={CreditCard}
+            title="No encounters found"
+            description="No encounters found for the selected filter."
+          />
         ) : (
           <table className="w-full">
             <thead>
@@ -216,12 +213,7 @@ export default function BillingPage() {
 
                     {/* Status */}
                     <td className="px-4 py-3">
-                      {cfg && (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${cfg.cls}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                          {cfg.label}
-                        </span>
-                      )}
+                      {cfg && <StatusBadge status={cfg.status} label={cfg.label} />}
                     </td>
 
                     {/* Actions */}
@@ -238,16 +230,23 @@ export default function BillingPage() {
                         {enc.status === 'BILLING_READY' && (
                           <Button
                             size="sm"
-                            icon={isBilling ? Loader2 : CheckCircle2}
                             onClick={() => handleMarkBilled(enc)}
                             disabled={isBilling}
                             className={isBilling ? 'opacity-70' : ''}
                           >
-                            {isBilling ? 'Processing...' : 'Billing Done'}
+                            {isBilling ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" /> Processing...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" /> Billing Done
+                              </>
+                            )}
                           </Button>
                         )}
                         {enc.status === 'BILLED' && (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                          <span className="text-xs text-success-600 dark:text-success-500 font-semibold flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" /> Archived
                           </span>
                         )}

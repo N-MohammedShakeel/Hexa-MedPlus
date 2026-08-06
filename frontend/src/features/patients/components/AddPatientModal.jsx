@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { addNewPatient, unarchivePatient } from "../../../store/slices/patientSlice";
 import { clinicalService } from "../../../services/api/clinicalService";
+import { notifyError } from "../../../common/utils/toast";
 import Modal from "../../../components/ui/Modal/Modal";
 import Input from "../../../components/ui/Input";
 import Button from "../../../components/ui/Button";
@@ -138,7 +139,7 @@ export default function AddPatientModal({ isOpen, onClose }) {
       resetForm();
     } catch (error) {
       console.error("Failed to unarchive patient", error);
-      alert("Error: " + (error.message || "Failed to unarchive patient"));
+      notifyError(error.message || "Failed to unarchive patient");
     } finally {
       setIsUnarchiving(false);
     }
@@ -149,7 +150,7 @@ export default function AddPatientModal({ isOpen, onClose }) {
     e.preventDefault();
 
     if (existingPatient && !physicianAssessment.trim()) {
-      alert("Please provide a mandatory physician assessment of the patient's past medical history before proceeding.");
+      notifyError("Please provide a mandatory physician assessment of the patient's past medical history before proceeding.");
       return;
     }
 
@@ -197,7 +198,7 @@ export default function AddPatientModal({ isOpen, onClose }) {
       resetForm();
     } catch (error) {
       console.error("Failed to add patient", error);
-      alert("Error: " + (error.message || "Failed to add patient"));
+      notifyError(error.message || "Failed to add patient");
     } finally {
       setIsSubmitting(false);
     }

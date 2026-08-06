@@ -182,7 +182,7 @@ public class DocumentController {
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(oldDoc -> processUpload(
                         filePart, "HOSPITAL_WIDE", "GUIDELINE", oldDoc.getSpecialty(),
-                        parseExpiry(expiryDate), oldDoc.getVersion() + 1, oldDoc.getId(), jobId
+                        parseExpiry(expiryDate), (oldDoc.getVersion() != null ? oldDoc.getVersion() : 1) + 1, oldDoc.getId(), jobId
                 ).doOnSuccess(result -> lifecycleService.retire(oldDoc)));
     }
 

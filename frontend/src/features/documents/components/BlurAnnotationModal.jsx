@@ -2,8 +2,9 @@ import React from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import { Button } from '../../../components/ui';
 import axiosInstance from '../../../config/axios';
+import { notifyError } from '../../../common/utils/toast';
 
-export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, docBlobUrl, onClose, analyzingStates, setAnalyzingStates }) {
+export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, docBlobUrl, onClose, analyzingStates, setAnalyzingStates, onAnalysisStarted, onAnalysisComplete }) {
   const regions = docAiResult?.blurryRegions || [];
   const imageWidth = docAiResult?.imageWidth || 1;
   const imageHeight = docAiResult?.imageHeight || 1;
@@ -23,16 +24,17 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalyzingStates(prev => ({ ...prev, [docAiResult.id]: { isAnalyzing: true, inputs } }));
+    onAnalysisStarted?.(doc?.fileKey, docAiResult?.id);
     try {
-      const res = await axiosInstance.post(`/api/ai/vision/results/${docAiResult.id}/reanalyze`, { 
+      const res = await axiosInstance.post(`/api/ai/vision/results/${docAiResult.id}/reanalyze`, {
         fileUrl: doc.url,
         blurDoctorInputs: inputs.map(inp => ({
           region: `x:${regions[inp.region_index]?.x} y:${regions[inp.region_index]?.y}`,
           text: inp.skipped ? "Skipped (not clinically significant)" : inp.doctor_text
         }))
       });
-      setDocAiResult(prev => ({ 
-        ...prev, 
+      setDocAiResult(prev => ({
+        ...prev,
         needs_blur_annotation: false,
         blurDoctorInputs: inputs,
         extractedText: res.data.extractedText,
@@ -42,11 +44,13 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
         verified: false
       }));
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
+      onAnalysisComplete?.(doc?.fileKey);
     } catch (e) {
       console.error('Failed to reanalyze document', e);
-      alert('Failed to start analysis.');
+      notifyError('Failed to start analysis.');
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
       setIsAnalyzing(false);
+      onAnalysisComplete?.(doc?.fileKey);
     }
   };
 
@@ -58,7 +62,7 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
       <div className="flex items-center justify-between text-white mb-6">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-100">
-            <AlertCircle className="text-amber-500 w-8 h-8" />
+            <AlertCircle className="text-warning-500 w-8 h-8" />
             Action Required: Blur Detected
           </h2>
           <p className="text-neutral-300 mt-1">Please describe the contents of the highlighted blurry regions before AI analysis.</p>
@@ -70,12 +74,12 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
 
       <div className="flex-1 flex flex-col lg:flex-row gap-8 min-h-0">
         {/* Left: Document Centered */}
-        <div className="flex-1 relative flex items-center justify-center bg-black/60 rounded-xl border border-white/10 overflow-hidden p-4 shadow-2xl">
+        <div className="flex-1 relative flex items-center justify-center bg-black/60 rounded-8 border border-white/10 overflow-hidden p-4 shadow-2xl">
           {docBlobUrl ? (
             <div className="relative inline-block max-h-full max-w-full">
-              <img src={docBlobUrl} alt="Document" className="max-h-[70vh] w-auto block rounded" />
+              <img src={docBlobUrl} alt="Document" className="max-h-[70vh] w-auto block rounded-4" />
               {regions.map((reg, i) => (
-                <div 
+                <div
                   key={i}
                   style={{
                     position: 'absolute',
@@ -84,7 +88,7 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
                     width: `${(reg.w / imageWidth) * 100}%`,
                     height: `${(reg.h / imageHeight) * 100}%`
                   }}
-                  className={`border-[3px] transition-all duration-300 ${i === step ? 'border-amber-500 bg-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.5)] z-10' : 'border-red-500/50 bg-red-500/10'}`}
+                  className={`border-[3px] transition-all duration-300 ${i === step ? 'border-warning-500 bg-warning-500/30 shadow-[0_0_15px_rgba(217,119,6,0.5)] z-10' : 'border-danger-500/50 bg-danger-500/10'}`}
                 />
               ))}
             </div>
@@ -95,12 +99,12 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
 
         {/* Right: Floating Input Panel */}
         <div className="w-full lg:w-[400px] flex flex-col gap-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 border border-neutral-200 dark:border-slate-700 animate-slide-in-right">
+          <div className="bg-white dark:bg-slate-900 rounded-8 shadow-2xl p-6 border border-neutral-200 dark:border-slate-700 animate-slide-in">
             <div className="flex items-center justify-between mb-2">
                 <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
                 Region {step + 1} of {regions.length}
                 </h3>
-                <span className="text-xs font-mono text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded">
+                <span className="text-xs font-mono text-warning-600 dark:text-warning-500 bg-warning-50 dark:bg-warning-500/15 px-2 py-0.5 rounded-6">
                   x:{regions[step]?.x} y:{regions[step]?.y}
                 </span>
             </div>
@@ -114,12 +118,12 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
               onChange={e => update('doctor_text', e.target.value)}
               disabled={current.skipped || isAnalyzing}
               placeholder={current.skipped ? 'Region skipped' : 'Enter text from the blurry region...'}
-              className={`w-full min-h-[140px] p-3 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none transition-colors ${
+              className={`w-full min-h-[140px] p-3 text-sm border rounded-6 focus:ring-2 focus:ring-primary-500 focus:outline-none transition-colors ${
                 current.skipped || isAnalyzing ? 'bg-neutral-100 dark:bg-slate-800 text-neutral-400 border-neutral-200 dark:border-slate-700' : 'bg-white dark:bg-slate-950 text-neutral-800 dark:text-slate-200 border-neutral-300 dark:border-slate-600'
               }`}
             />
             <label className="flex items-center gap-2 mt-4 text-sm text-neutral-600 dark:text-slate-400 cursor-pointer hover:text-neutral-900 dark:hover:text-slate-200 transition-colors">
-              <input type="checkbox" checked={current.skipped || false} onChange={e => update('skipped', e.target.checked)} disabled={isAnalyzing} className="rounded w-4 h-4 text-primary-600 cursor-pointer" />
+              <input type="checkbox" checked={current.skipped || false} onChange={e => update('skipped', e.target.checked)} disabled={isAnalyzing} className="rounded-4 w-4 h-4 text-primary-600 cursor-pointer" />
               Skip this region (illegible/unimportant)
             </label>
 
@@ -135,7 +139,7 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
                   Next Region →
                 </Button>
               ) : (
-                <Button onClick={handleAnalyze} disabled={isAnalyzing} className="bg-success-600 hover:bg-success-700 text-white border-0">
+                <Button variant="success" onClick={handleAnalyze} disabled={isAnalyzing}>
                   {isAnalyzing ? "Analyzing..." : "Start Analyzing"}
                 </Button>
               )}

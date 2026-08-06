@@ -23,6 +23,9 @@ import {
 import { clinicalService } from "../../../services/api/clinicalService";
 import { useAllEncounters } from "../../../common/hooks/useEncounters";
 import axiosInstance from "../../../config/axios";
+import { selectTheme } from "../../../store/slices/themeSlice";
+
+const CHART_ACCENT = "#0052CC"; // primary-500
 
 function KPICard({ data }) {
   const iconMap = {
@@ -73,8 +76,18 @@ export default function DashboardPage() {
 
   const { encounters, loading: encountersLoading } = useAllEncounters();
   const { user } = useSelector(state => state.auth);
+  const theme = useSelector(selectTheme);
+  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const [auditLogs, setAuditLogs] = React.useState([]);
   const [analyticsData, setAnalyticsData] = React.useState(null);
+
+  const chartChrome = {
+    grid: isDark ? "#434654" : "#ECEEF0",
+    tick: isDark ? "#737685" : "#505F76",
+    tooltipBg: isDark ? "#191C1E" : "#FFFFFF",
+    tooltipBorder: isDark ? "#434654" : "#ECEEF0",
+    tooltipText: isDark ? "#F2F4F6" : "#191C1E",
+  };
 
   useEffect(() => {
     if (status === "idle") {
@@ -308,7 +321,7 @@ export default function DashboardPage() {
               {Array.from(new Map(auditLogs.map(l => [l.encounterId, l])).values()).slice(0, 4).map((log) => (
                 <div
                   key={log.id}
-                  className="p-4 bg-neutral-50 dark:bg-slate-800/50 rounded-4 border border-warning-200 dark:border-warning-900/50 hover:border-warning-400 transition-colors"
+                  className="p-4 bg-neutral-50 dark:bg-slate-800/50 rounded-8 border border-warning-200 dark:border-warning-900/50 hover:border-warning-400 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-neutral-900 dark:text-slate-200">
@@ -345,18 +358,27 @@ export default function DashboardPage() {
               <h3 className="text-xl font-semibold text-neutral-900 dark:text-slate-100">
                 Patient Visits
               </h3>
-              <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-2 text-xs font-semibold text-neutral-800 dark:text-slate-300">
+              <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-6 text-xs font-semibold text-neutral-800 dark:text-slate-300">
                 This Week
               </span>
             </div>
             <div className="h-[240px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barChartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
-                  <RechartsTooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="patients" fill="#0EA5E9" radius={[4, 4, 0, 0]} barSize={20} />
+                  <CartesianGrid strokeDasharray="none" vertical={false} stroke={chartChrome.grid} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartChrome.tick }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartChrome.tick }} />
+                  <RechartsTooltip
+                    cursor={{ fill: 'transparent' }}
+                    contentStyle={{
+                      borderRadius: '8px',
+                      border: `1px solid ${chartChrome.tooltipBorder}`,
+                      background: chartChrome.tooltipBg,
+                      color: chartChrome.tooltipText,
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Bar dataKey="patients" fill={CHART_ACCENT} radius={[4, 4, 0, 0]} barSize={20} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -367,7 +389,7 @@ export default function DashboardPage() {
               <h3 className="text-xl font-semibold text-neutral-900 dark:text-slate-100">
                 Admissions Trend
               </h3>
-              <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-2 text-xs font-semibold text-neutral-800 dark:text-slate-300">
+              <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-6 text-xs font-semibold text-neutral-800 dark:text-slate-300">
                 This Week
               </span>
             </div>
@@ -376,15 +398,23 @@ export default function DashboardPage() {
                 <AreaChart data={areaChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorAdmissions" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
+                      <stop offset="0%" stopColor={CHART_ACCENT} stopOpacity={0.1} />
+                      <stop offset="100%" stopColor={CHART_ACCENT} stopOpacity={0.1} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
-                  <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Area type="monotone" dataKey="admissions" stroke="#8B5CF6" strokeWidth={3} fillOpacity={1} fill="url(#colorAdmissions)" />
+                  <CartesianGrid strokeDasharray="none" vertical={false} stroke={chartChrome.grid} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartChrome.tick }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: chartChrome.tick }} />
+                  <RechartsTooltip
+                    contentStyle={{
+                      borderRadius: '8px',
+                      border: `1px solid ${chartChrome.tooltipBorder}`,
+                      background: chartChrome.tooltipBg,
+                      color: chartChrome.tooltipText,
+                      fontSize: '12px',
+                    }}
+                  />
+                  <Area type="monotone" dataKey="admissions" stroke={CHART_ACCENT} strokeWidth={2} fillOpacity={1} fill="url(#colorAdmissions)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

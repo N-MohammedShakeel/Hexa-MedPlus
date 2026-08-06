@@ -73,7 +73,7 @@ The JSON schema is:
 }
 """
 
-async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jpeg", max_tokens: int = 2048, custom_prompt: str = None, timeout: float = 120.0) -> dict:
+async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jpeg", max_tokens: int = 2048, custom_prompt: str = None, timeout: float = 300.0) -> dict:
     api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
     if not api_key:
         log_error("NVIDIA_API_KEY / NVIDIA_NIM_API_KEY is not set.")

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { clinicalService } from "../../../services/api/clinicalService";
 import axiosInstance from "../../../config/axios";
+import { useConfirm } from "../../../contexts/ConfirmContext";
+import { notifyError } from "../../../common/utils/toast";
 
 import ProtocolList from "../components/ProtocolList";
 import ProtocolDetailsPane from "../components/ProtocolDetailsPane";
@@ -15,6 +17,7 @@ export default function ClinicalProtocolsPage() {
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [ragStatus, setRagStatus] = useState(null);
   const [ragLoading, setRagLoading] = useState(false);
+  const confirm = useConfirm();
 
   const fetchRagStatus = async () => {
     setRagLoading(true);
@@ -68,14 +71,15 @@ export default function ClinicalProtocolsPage() {
   }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this guideline? It will be removed from the AI knowledge base.")) return;
+    const ok = await confirm("Delete this guideline? It will be removed from the AI knowledge base.");
+    if (!ok) return;
     try {
       await clinicalService.deleteDocument(id);
       setProtocols((prev) => prev.filter((p) => p.id !== id));
       if (selectedProtocol?.id === id) setSelectedProtocol(null);
     } catch (err) {
       console.error("Failed to delete:", err);
-      alert("Failed to delete guideline.");
+      notifyError("Failed to delete guideline.");
     }
   };
 
@@ -102,7 +106,7 @@ export default function ClinicalProtocolsPage() {
         fetchProtocols={fetchProtocols}
         SPECIALTY_TAGS={SPECIALTY_TAGS}
       />
-      <div className="flex-1 bg-neutral-50 dark:bg-slate-900/50 overflow-y-auto">
+      <div className="flex-1 bg-neutral-50 dark:bg-neutral-900/50 overflow-y-auto">
         <ProtocolDetailsPane
           selectedProtocol={selectedProtocol}
           setSelectedProtocol={setSelectedProtocol}

@@ -4,8 +4,8 @@ import Button from "../../../components/ui/Button";
 import StatusBadge from "../../../components/ui/Badge";
 import {
     ArrowLeft, Stethoscope, FileText, Activity, CheckCircle, XCircle,
-    Edit3, ChevronDown, Sparkles, Shield, Info, Beaker, HeartPulse,
-    Brain, History, Send, Save, Search, Filter, Plus, Trash2, Clock,
+    Edit3, ChevronDown, Sparkles, Shield, Beaker, HeartPulse,
+    Brain, History, Send, Save, Search, Plus, Trash2, Clock,
     AlertTriangle, User, ChevronRight, RefreshCw
 } from "lucide-react";
 import { useSelector } from "react-redux";
@@ -14,23 +14,24 @@ import { usePatientDetail, usePatients } from "../../../common/hooks/usePatients
 import { usePatientEncounters, useAllEncounters } from "../../../common/hooks/useEncounters";
 import axiosInstance from "../../../config/axios";
 import { API_ENDPOINTS } from "../../../common/constants/apiEndpoints";
+import { notifySuccess, notifyError } from "../../../common/utils/toast";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const getConfidenceBg = (c) =>
-    c >= 90 ? "bg-success-500" : c >= 80 ? "bg-info-500" : c >= 70 ? "bg-amber-500" : "bg-danger-500";
+    c >= 90 ? "bg-success-500" : c >= 80 ? "bg-info-500" : c >= 70 ? "bg-warning-500" : "bg-danger-500";
 
 const getConfidenceLabel = (c) =>
     c >= 90 ? "High" : c >= 80 ? "Medium-High" : c >= 70 ? "Medium" : "Low";
 
 const ENCOUNTER_STATUS_CONFIG = {
-    IN_PROGRESS:     { label: "In Progress",       variant: "info",    badgeClass: "bg-blue-100 text-blue-700" },
-    CODING_PENDING:  { label: "Awaiting Coding",   variant: "warning", badgeClass: "bg-amber-100 text-amber-700" },
-    CODING_COMPLETE: { label: "Under Review",      variant: "info",    badgeClass: "bg-indigo-100 text-indigo-700" },
-    CODING_REVISION: { label: "Revision Needed",   variant: "danger",  badgeClass: "bg-red-100 text-red-700" },
-    BILLING_READY:   { label: "Ready to Bill",     variant: "success", badgeClass: "bg-green-100 text-green-700" },
-    BILLED:          { label: "Billed",            variant: "success", badgeClass: "bg-emerald-100 text-emerald-700" },
-    SIGNED:          { label: "Signed",            variant: "success", badgeClass: "bg-teal-100 text-teal-700" },
+    IN_PROGRESS:     { label: "In Progress",       variant: "info" },
+    CODING_PENDING:  { label: "Awaiting Coding",   variant: "warning" },
+    CODING_COMPLETE: { label: "Under Review",      variant: "info" },
+    CODING_REVISION: { label: "Revision Needed",   variant: "danger" },
+    BILLING_READY:   { label: "Ready to Bill",     variant: "success" },
+    BILLED:          { label: "Billed",            variant: "success" },
+    SIGNED:          { label: "Signed",            variant: "success" },
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ function CodeSuggestionCard({ code, type, onAction, expanded, onToggle, isCustom
     };
 
     return (
-        <div className={`border rounded-4 transition-all ${
+        <div className={`border rounded-8 transition-all ${
             code.status === "approved" ? "border-success-300 dark:border-success-700/50 bg-success-50/30 dark:bg-success-900/10"
             : code.status === "rejected" ? "border-danger-300 dark:border-danger-700/50 bg-danger-50/30 dark:bg-danger-900/10 opacity-75"
             : "border-neutral-400 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary-300 dark:hover:border-primary-600"
@@ -73,29 +74,29 @@ function CodeSuggestionCard({ code, type, onAction, expanded, onToggle, isCustom
             <div className="p-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-start gap-3 flex-1">
-                        <div className={`w-10 h-10 rounded-4 flex items-center justify-center flex-shrink-0 ${type === "icd" ? "bg-info-100 text-info-500" : "bg-primary-100 text-primary-600"}`}>
+                        <div className={`flex-shrink-0 mt-0.5 ${type === "icd" ? "text-info-500" : "text-primary-600"}`}>
                             {type === "icd" ? <Stethoscope className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                         </div>
                         <div className="flex-1 min-w-0">
                             {editMode ? (
                                 <div className="space-y-2">
                                     <input value={editCode} onChange={e => setEditCode(e.target.value)}
-                                        className="w-full text-sm font-mono border border-primary-300 rounded-3 px-2 py-1 bg-white dark:bg-slate-700 dark:text-white"
+                                        className="w-full text-sm font-mono border border-primary-300 rounded-6 px-2 py-1 bg-white dark:bg-slate-700 dark:text-white"
                                         placeholder="Code (e.g. E11.9)" />
                                     <input value={editDesc} onChange={e => setEditDesc(e.target.value)}
-                                        className="w-full text-sm border border-primary-300 rounded-3 px-2 py-1 bg-white dark:bg-slate-700 dark:text-white"
+                                        className="w-full text-sm border border-primary-300 rounded-6 px-2 py-1 bg-white dark:bg-slate-700 dark:text-white"
                                         placeholder="Description" />
                                     <div className="flex gap-2">
-                                        <button onClick={handleSaveEdit} className="px-3 py-1 text-xs bg-primary-500 text-white rounded-3 hover:bg-primary-600">Save</button>
-                                        <button onClick={() => setEditMode(false)} className="px-3 py-1 text-xs border border-neutral-400 rounded-3 hover:bg-neutral-100 dark:hover:bg-slate-700 dark:text-slate-300">Cancel</button>
+                                        <button onClick={handleSaveEdit} className="px-3 py-1 text-xs bg-primary-500 text-white rounded-6 hover:bg-primary-600">Save</button>
+                                        <button onClick={() => setEditMode(false)} className="px-3 py-1 text-xs border border-neutral-400 rounded-6 hover:bg-neutral-100 dark:hover:bg-slate-700 dark:text-slate-300">Cancel</button>
                                     </div>
                                 </div>
                             ) : (
                                 <>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-mono text-base font-bold text-neutral-900 dark:text-slate-100">{code.code}</span>
-                                        {code.isPrimary && <span className="px-1.5 py-0.5 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 text-primary-600 text-[10px] font-bold uppercase rounded-2">Primary</span>}
-                                        {isCustom && <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold uppercase rounded-2">Custom</span>}
+                                        {code.isPrimary && <span className="px-1.5 py-0.5 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 text-[10px] font-bold uppercase rounded-6">Primary</span>}
+                                        {isCustom && <span className="px-1.5 py-0.5 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 text-warning-700 dark:text-warning-400 text-[10px] font-bold uppercase rounded-6">Custom</span>}
                                         <StatusBadge status={statusInfo.variant} label={statusInfo.label} />
                                     </div>
                                     <p className="text-sm text-neutral-800 dark:text-slate-300 mt-1">{code.description}</p>
@@ -103,8 +104,8 @@ function CodeSuggestionCard({ code, type, onAction, expanded, onToggle, isCustom
                             )}
                         </div>
                     </div>
-                    <button onClick={onToggle} className="p-1.5 rounded-2 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors flex-shrink-0">
-                        <ChevronDown className={`w-4 h-4 text-neutral-600 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    <button onClick={onToggle} className="p-1.5 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors flex-shrink-0">
+                        <ChevronDown className={`w-4 h-4 text-neutral-600 dark:text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
                     </button>
                 </div>
 
@@ -141,7 +142,7 @@ function CodeSuggestionCard({ code, type, onAction, expanded, onToggle, isCustom
                                     <Shield className="w-3.5 h-3.5 text-neutral-700 dark:text-slate-400" />
                                     <h5 className="text-xs font-semibold text-neutral-900 dark:text-slate-200 uppercase tracking-wider">Clinical Guideline</h5>
                                 </div>
-                                <div className="p-2.5 bg-neutral-100 dark:bg-slate-800/50 border border-neutral-400 dark:border-slate-700 rounded-4">
+                                <div className="p-2.5 bg-neutral-100 dark:bg-slate-800/50 border border-neutral-400 dark:border-slate-700 rounded-8">
                                     <p className="text-xs text-neutral-800 dark:text-slate-300">{code.guideline}</p>
                                 </div>
                             </div>
@@ -196,7 +197,7 @@ function AddCustomCodeModal({ onAdd, onClose }) {
                         <div className="flex gap-3">
                             {["ICD10", "CPT"].map(t => (
                                 <button key={t} onClick={() => setCodeType(t)}
-                                    className={`flex-1 py-2 text-sm font-semibold rounded-4 border transition-colors ${codeType === t ? "bg-primary-500 text-white border-primary-500" : "border-neutral-400 dark:border-slate-600 text-neutral-700 dark:text-slate-300 hover:border-primary-400"}`}>
+                                    className={`flex-1 py-2 text-sm font-semibold rounded-6 border transition-colors ${codeType === t ? "bg-primary-500 text-white border-primary-500" : "border-neutral-400 dark:border-slate-600 text-neutral-700 dark:text-slate-300 hover:border-primary-400"}`}>
                                     {t === "ICD10" ? "ICD-10" : "CPT"}
                                 </button>
                             ))}
@@ -207,13 +208,13 @@ function AddCustomCodeModal({ onAdd, onClose }) {
                             {codeType === "ICD10" ? "ICD-10 Code (e.g. E11.9)" : "CPT Code (e.g. 99214)"}
                         </label>
                         <input value={codeVal} onChange={e => setCodeVal(e.target.value)}
-                            className="w-full border border-neutral-400 dark:border-slate-600 rounded-4 px-3 py-2 text-sm font-mono bg-white dark:bg-slate-700 dark:text-white focus:outline-none focus:border-primary-500"
+                            className="w-full border border-neutral-400 dark:border-slate-600 rounded-6 px-3 py-2 text-sm font-mono bg-white dark:bg-slate-700 dark:text-white focus:outline-none focus:border-primary-500"
                             placeholder={codeType === "ICD10" ? "E.g. E11.65" : "E.g. 99215"} />
                     </div>
                     <div>
                         <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">Description</label>
                         <input value={descVal} onChange={e => setDescVal(e.target.value)}
-                            className="w-full border border-neutral-400 dark:border-slate-600 rounded-4 px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white focus:outline-none focus:border-primary-500"
+                            className="w-full border border-neutral-400 dark:border-slate-600 rounded-6 px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white focus:outline-none focus:border-primary-500"
                             placeholder="Enter code description..." />
                     </div>
                 </div>
@@ -236,7 +237,7 @@ function CodingList() {
     const CODING_STATUSES = new Set(['CODING_PENDING', 'CODING_COMPLETE', 'CODING_REVISION', 'BILLING_READY', 'BILLED']);
 
     if (patientsLoading || encountersLoading) {
-        return <div className="p-8 text-center text-slate-500">Loading Patient Queue...</div>;
+        return <div className="p-8 text-center text-neutral-500 dark:text-slate-400">Loading Patient Queue...</div>;
     }
 
     const codingQueue = (encounters || [])
@@ -306,9 +307,7 @@ function CodingList() {
                                     <td className="px-6 py-4 text-sm text-neutral-800 dark:text-slate-300">{p.encounterDate}</td>
                                     <td className="px-6 py-4 text-sm text-neutral-800 dark:text-slate-300">{p.department}</td>
                                     <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-4 text-xs font-semibold ${p.statusCfg.badgeClass}`}>
-                                            {p.statusCfg.label}
-                                        </span>
+                                        <StatusBadge status={p.statusCfg.variant} label={p.statusCfg.label} />
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <Button size="sm" onClick={() => navigate(`/coding/${p.id}`)} icon={ChevronRight}>
@@ -348,11 +347,10 @@ function CodingDetail({ patientId }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [draftSavedAt, setDraftSavedAt] = useState(null);
-    const [toast, setToast] = useState(null);
 
     const showToast = (msg, type = "success") => {
-        setToast({ msg, type });
-        setTimeout(() => setToast(null), 3500);
+        if (type === "error") notifyError(msg);
+        else notifySuccess(msg);
     };
 
     // ── Load AI Insights & draft on encounter load ──
@@ -524,7 +522,7 @@ function CodingDetail({ patientId }) {
             }
             await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.UPDATE_STATUS(latestEncounter.id), { status: 'CODING_COMPLETE' });
             logActivity("SUBMITTED_FOR_REVIEW", null, `Submitted ${allApproved.length} approved codes for physician review`);
-            showToast("Submitted for physician review! ✓");
+            showToast("Submitted for physician review!");
             setTimeout(() => navigate('/coding'), 1500);
         } catch (e) {
             showToast("Failed to submit", "error");
@@ -553,7 +551,7 @@ function CodingDetail({ patientId }) {
         try {
             await axiosInstance.put(`/api/encounters/${latestEncounter.id}/approve-billing`);
             logActivity("APPROVED_FOR_BILLING", null, "Codes approved by physician — sent to billing");
-            showToast("Approved for billing! ✓");
+            showToast("Approved for billing!");
             setTimeout(() => navigate('/coding'), 1500);
         } catch (e) {
             showToast("Failed to approve", "error");
@@ -586,10 +584,10 @@ function CodingDetail({ patientId }) {
         return (
             <div className="p-8 max-w-7xl mx-auto">
                 <div className="flex items-center gap-3 mb-6">
-                    <button onClick={() => navigate('/coding')} className="p-2 rounded-4 hover:bg-neutral-200 dark:hover:bg-slate-700">
+                    <button onClick={() => navigate('/coding')} className="p-2 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700">
                         <ArrowLeft className="w-5 h-5 text-neutral-700 dark:text-slate-300" />
                     </button>
-                    <div className="h-6 w-48 bg-neutral-200 dark:bg-slate-700 rounded animate-pulse" />
+                    <div className="h-6 w-48 bg-neutral-200 dark:bg-slate-700 rounded-6 animate-pulse" />
                 </div>
                 <div className="grid grid-cols-3 gap-6">
                     {[1,2,3].map(i => <div key={i} className="h-48 bg-neutral-200 dark:bg-slate-700 rounded-8 animate-pulse" />)}
@@ -598,8 +596,8 @@ function CodingDetail({ patientId }) {
         );
     }
 
-    if (!patient) return <div className="p-8 text-center text-neutral-500">Patient not found.</div>;
-    if (!latestEncounter) return <div className="p-8 text-center text-neutral-500">No encounters found for this patient.</div>;
+    if (!patient) return <div className="p-8 text-center text-neutral-500 dark:text-slate-400">Patient not found.</div>;
+    if (!latestEncounter) return <div className="p-8 text-center text-neutral-500 dark:text-slate-400">No encounters found for this patient.</div>;
 
     // ── Derive display data from encounter ──
     const vitals = [
@@ -622,25 +620,18 @@ function CodingDetail({ patientId }) {
     const statusCfg = ENCOUNTER_STATUS_CONFIG[latestEncounter.status] || ENCOUNTER_STATUS_CONFIG.IN_PROGRESS;
     const isEditable = !["BILLING_READY", "BILLED", "ARCHIVED"].includes(latestEncounter.status);
 
-    const activityIcons = { AI: <Sparkles className="w-3.5 h-3.5 text-primary-500" />, SYSTEM: <Activity className="w-3.5 h-3.5 text-neutral-500" />, USER: <User className="w-3.5 h-3.5 text-info-500" /> };
+    const activityIcons = { AI: <Sparkles className="w-3.5 h-3.5 text-primary-500" />, SYSTEM: <Activity className="w-3.5 h-3.5 text-neutral-500 dark:text-slate-400" />, USER: <User className="w-3.5 h-3.5 text-info-500" /> };
     const formatTimestamp = (ts) => {
         try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ts; }
     };
 
     return (
         <div className="min-h-screen bg-neutral-50 dark:bg-slate-900">
-            {/* Toast */}
-            {toast && (
-                <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-6 shadow-xl text-sm font-semibold animate-fade-in ${toast.type === 'error' ? 'bg-danger-500 text-white' : 'bg-success-500 text-white'}`}>
-                    {toast.msg}
-                </div>
-            )}
-
             {/* Header */}
             <div className="bg-white dark:bg-slate-800 border-b border-neutral-400 dark:border-slate-700 px-8 py-4">
                 <div className="max-w-[1600px] mx-auto flex items-center justify-between flex-wrap gap-4">
                     <div className="flex items-center gap-4">
-                        <button onClick={() => navigate('/coding')} className="p-2 rounded-4 hover:bg-neutral-100 dark:hover:bg-slate-700 transition-colors">
+                        <button onClick={() => navigate('/coding')} className="p-2 rounded-6 hover:bg-neutral-100 dark:hover:bg-slate-700 transition-colors">
                             <ArrowLeft className="w-5 h-5 text-neutral-700 dark:text-slate-300" />
                         </button>
                         <div>
@@ -648,13 +639,9 @@ function CodingDetail({ patientId }) {
                                 <h1 className="text-lg font-bold text-neutral-900 dark:text-white">
                                     {patient.firstName} {patient.lastName}
                                 </h1>
-                                <span className={`px-2.5 py-0.5 rounded-4 text-xs font-semibold ${statusCfg.badgeClass}`}>
-                                    {statusCfg.label}
-                                </span>
+                                <StatusBadge status={statusCfg.variant} label={statusCfg.label} />
                                 {latestEncounter.revisionNote && latestEncounter.status === 'CODING_REVISION' && (
-                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-semibold rounded-4">
-                                        ⚠ Revision Requested
-                                    </span>
+                                    <StatusBadge status="warning" label="Revision Requested" />
                                 )}
                             </div>
                             <p className="text-xs text-neutral-600 dark:text-slate-400 mt-0.5">
@@ -670,14 +657,13 @@ function CodingDetail({ patientId }) {
                             <>
                                 <Button variant="ghost" icon={RefreshCw}
                                     onClick={() => setShowRevisionModal(true)}
-                                    className="text-orange-600 hover:bg-orange-50 border border-orange-300"
+                                    className="text-warning-600 dark:text-warning-400 hover:bg-warning-50 dark:hover:bg-warning-900/20 border border-warning-300 dark:border-warning-700"
                                 >
                                     Request Revision
                                 </Button>
-                                <Button variant="primary" icon={CheckCircle}
+                                <Button variant="success" icon={CheckCircle}
                                     onClick={handleApproveBilling}
                                     disabled={isApprovingBilling}
-                                    className="bg-green-600 hover:bg-green-700"
                                 >
                                     {isApprovingBilling ? "Approving..." : "Approve for Billing"}
                                 </Button>
@@ -701,12 +687,12 @@ function CodingDetail({ patientId }) {
 
             {/* Revision note banner */}
             {latestEncounter.revisionNote && latestEncounter.status === 'CODING_REVISION' && (
-                <div className="bg-orange-50 border-b border-orange-200 px-8 py-3">
+                <div className="bg-warning-50 dark:bg-warning-500/10 border-b border-warning-200 dark:border-warning-500/30 px-8 py-3">
                     <div className="max-w-[1600px] mx-auto flex items-start gap-3">
-                        <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                        <AlertTriangle className="w-5 h-5 text-warning-500 flex-shrink-0 mt-0.5" />
                         <div>
-                            <p className="text-sm font-semibold text-orange-800">Physician Revision Request</p>
-                            <p className="text-sm text-orange-700">{latestEncounter.revisionNote}</p>
+                            <p className="text-sm font-semibold text-warning-800 dark:text-warning-300">Physician Revision Request</p>
+                            <p className="text-sm text-warning-700 dark:text-warning-400">{latestEncounter.revisionNote}</p>
                         </div>
                     </div>
                 </div>
@@ -716,29 +702,29 @@ function CodingDetail({ patientId }) {
 
                 {/* Physician Review Banner — shown when coder has submitted for review */}
                 {latestEncounter.status === 'CODING_COMPLETE' && (
-                    <div className="mb-6 rounded-8 border border-indigo-200 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-700 p-4">
+                    <div className="mb-6 rounded-8 border border-info-200 bg-info-50 dark:bg-info-900/20 dark:border-info-700 p-4">
                         <div className="flex items-start justify-between gap-4 flex-wrap">
                             <div className="flex items-start gap-3">
-                                <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center flex-shrink-0">
-                                    <CheckCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
-                                </div>
+                                <CheckCircle className="w-5 h-5 text-info-600 dark:text-info-300 flex-shrink-0 mt-0.5" />
                                 <div>
-                                    <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Pending Physician Review</p>
-                                    <p className="text-xs text-indigo-700 dark:text-indigo-400 mt-0.5">
+                                    <p className="text-sm font-bold text-info-900 dark:text-info-200">Pending Physician Review</p>
+                                    <p className="text-xs text-info-700 dark:text-info-400 mt-0.5">
                                         The medical coder has submitted {stats.approved} approved codes. Review the codes below and approve for billing or send back for revision.
                                     </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                                <button onClick={() => setShowRevisionModal(true)}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-5 border border-orange-300 text-orange-700 bg-white hover:bg-orange-50 transition-colors">
-                                    <RefreshCw className="w-3.5 h-3.5" /> Request Revision
-                                </button>
-                                <button onClick={handleApproveBilling} disabled={isApprovingBilling}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-5 bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-70">
-                                    <CheckCircle className="w-3.5 h-3.5" />
+                                <Button variant="ghost" size="sm" icon={RefreshCw}
+                                    onClick={() => setShowRevisionModal(true)}
+                                    className="border border-warning-300 dark:border-warning-700 text-warning-700 dark:text-warning-400 bg-white dark:bg-slate-800 hover:bg-warning-50 dark:hover:bg-warning-900/20"
+                                >
+                                    Request Revision
+                                </Button>
+                                <Button variant="success" size="sm" icon={CheckCircle}
+                                    onClick={handleApproveBilling} disabled={isApprovingBilling}
+                                >
                                     {isApprovingBilling ? 'Approving...' : 'Approve for Billing'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>
@@ -748,9 +734,9 @@ function CodingDetail({ patientId }) {
 
                 <div className="grid grid-cols-3 gap-4 mb-6">
                     {[
-                        { label: "Approved", count: stats.approved, color: "text-success-600 bg-success-50 border-success-200" },
-                        { label: "Pending", count: stats.pending, color: "text-amber-600 bg-amber-50 border-amber-200" },
-                        { label: "Rejected", count: stats.rejected, color: "text-danger-600 bg-danger-50 border-danger-200" },
+                        { label: "Approved", count: stats.approved, color: "text-success-600 dark:text-success-500 bg-success-50 dark:bg-success-500/10 border-success-200 dark:border-success-500/30" },
+                        { label: "Pending", count: stats.pending, color: "text-warning-600 dark:text-warning-500 bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30" },
+                        { label: "Rejected", count: stats.rejected, color: "text-danger-600 dark:text-danger-500 bg-danger-50 dark:bg-danger-500/10 border-danger-200 dark:border-danger-500/30" },
                     ].map(s => (
                         <div key={s.label} className={`flex items-center justify-between px-4 py-3 rounded-6 border ${s.color}`}>
                             <span className="text-sm font-semibold">{s.label}</span>
@@ -783,7 +769,7 @@ function CodingDetail({ patientId }) {
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 {vitals.map(v => (
-                                    <div key={v.label} className="text-center p-2 bg-neutral-50 dark:bg-slate-800/50 rounded-4">
+                                    <div key={v.label} className="text-center p-2 bg-neutral-50 dark:bg-slate-800/50 rounded-6">
                                         <div className="text-lg font-bold text-neutral-900 dark:text-white">{v.value}</div>
                                         <div className="text-xs text-neutral-600 dark:text-slate-400 mt-0.5">{v.label}</div>
                                     </div>
@@ -803,9 +789,9 @@ function CodingDetail({ patientId }) {
                                         <div key={lab.id} className="flex items-center justify-between py-1.5 border-b border-neutral-300 dark:border-slate-700 last:border-0">
                                             <div>
                                                 <div className="text-xs font-semibold text-neutral-800 dark:text-slate-200">{lab.testName}</div>
-                                                {lab.referenceRange && <div className="text-[10px] text-neutral-500">Ref: {lab.referenceRange}</div>}
+                                                {lab.referenceRange && <div className="text-[10px] text-neutral-500 dark:text-slate-500">Ref: {lab.referenceRange}</div>}
                                             </div>
-                                            <span className={`text-sm font-bold ${lab.isAbnormal ? "text-danger-600" : "text-success-600"}`}>
+                                            <span className={`text-sm font-bold ${lab.isAbnormal ? "text-danger-600 dark:text-danger-400" : "text-success-600 dark:text-success-400"}`}>
                                                 {lab.resultValue} {lab.unit || ""}
                                             </span>
                                         </div>
@@ -842,7 +828,7 @@ function CodingDetail({ patientId }) {
                                     <Stethoscope className="w-4 h-4 text-info-500" />
                                     <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
                                         ICD-10 Diagnosis Codes
-                                        <span className="ml-2 px-1.5 py-0.5 bg-info-100 text-info-700 text-xs rounded-full">{icdCodes.length + customIcdCodes.length}</span>
+                                        <span className="ml-2 px-1.5 py-0.5 bg-info-100 dark:bg-info-900/30 text-info-700 dark:text-info-400 text-xs rounded-full">{icdCodes.length + customIcdCodes.length}</span>
                                     </h3>
                                 </div>
                                 {isEditable && (
@@ -854,7 +840,7 @@ function CodingDetail({ patientId }) {
                             </div>
                             <div className="space-y-3">
                                 {[...icdCodes, ...customIcdCodes].length === 0 ? (
-                                    <div className="text-center py-6 text-neutral-500 text-sm border-2 border-dashed border-neutral-300 rounded-6">
+                                    <div className="text-center py-6 text-neutral-500 dark:text-slate-400 text-sm border-2 border-dashed border-neutral-300 dark:border-slate-700 rounded-6">
                                         No ICD-10 codes yet. Generate AI codes or add custom codes.
                                     </div>
                                 ) : (
@@ -877,7 +863,7 @@ function CodingDetail({ patientId }) {
                                     <FileText className="w-4 h-4 text-primary-500" />
                                     <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
                                         CPT Procedure Codes
-                                        <span className="ml-2 px-1.5 py-0.5 bg-primary-100 text-primary-700 text-xs rounded-full">{cptCodes.length + customCptCodes.length}</span>
+                                        <span className="ml-2 px-1.5 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-xs rounded-full">{cptCodes.length + customCptCodes.length}</span>
                                     </h3>
                                 </div>
                                 {isEditable && (
@@ -889,7 +875,7 @@ function CodingDetail({ patientId }) {
                             </div>
                             <div className="space-y-3">
                                 {[...cptCodes, ...customCptCodes].length === 0 ? (
-                                    <div className="text-center py-6 text-neutral-500 text-sm border-2 border-dashed border-neutral-300 rounded-6">
+                                    <div className="text-center py-6 text-neutral-500 dark:text-slate-400 text-sm border-2 border-dashed border-neutral-300 dark:border-slate-700 rounded-6">
                                         No CPT codes yet.
                                     </div>
                                 ) : (
@@ -912,11 +898,11 @@ function CodingDetail({ patientId }) {
                             <div className="flex items-center gap-2 mb-4">
                                 <History className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
                                 <h3 className="text-sm font-bold text-neutral-900 dark:text-white">Activity Log</h3>
-                                <span className="ml-auto text-xs text-neutral-500">{activityLog.length} events</span>
+                                <span className="ml-auto text-xs text-neutral-500 dark:text-slate-400">{activityLog.length} events</span>
                             </div>
                             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                                 {activityLog.length === 0 ? (
-                                    <p className="text-xs text-neutral-500 text-center py-4">No activity recorded yet.</p>
+                                    <p className="text-xs text-neutral-500 dark:text-slate-400 text-center py-4">No activity recorded yet.</p>
                                 ) : activityLog.map((event, i) => (
                                     <div key={event.id || i} className="flex gap-2.5">
                                         <div className="w-6 h-6 rounded-full bg-neutral-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
@@ -938,7 +924,7 @@ function CodingDetail({ patientId }) {
                                 ))}
                             </div>
                             <div className="mt-4 pt-4 border-t border-neutral-300 dark:border-slate-700">
-                                <div className="flex items-center gap-2 p-3 bg-neutral-50 dark:bg-slate-800/50 rounded-4">
+                                <div className="flex items-center gap-2 p-3 bg-neutral-50 dark:bg-slate-800/50 rounded-8">
                                     <Shield className="w-4 h-4 text-success-500 flex-shrink-0" />
                                     <p className="text-[10px] text-neutral-600 dark:text-slate-400 leading-snug">
                                         All AI suggestions, modifications, and approvals are recorded for HIPAA &amp; CMS audit requirements.
@@ -959,9 +945,7 @@ function CodingDetail({ patientId }) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-white dark:bg-slate-800 rounded-8 shadow-2xl p-6 w-full max-w-md">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                                <RefreshCw className="w-5 h-5 text-orange-600" />
-                            </div>
+                            <RefreshCw className="w-6 h-6 text-warning-500 flex-shrink-0" />
                             <div>
                                 <h3 className="text-base font-bold text-neutral-900 dark:text-white">Request Code Revision</h3>
                                 <p className="text-xs text-neutral-500 dark:text-slate-400">The coder will be notified with your feedback.</p>
@@ -976,11 +960,11 @@ function CodingDetail({ patientId }) {
                                 onChange={e => setRevisionNote(e.target.value)}
                                 rows={4}
                                 placeholder="Explain what needs to be corrected (e.g. 'ICD-10 E11.65 should be E11.9 — patient does not have foot complications')..."
-                                className="w-full border border-neutral-400 dark:border-slate-600 rounded-4 px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white focus:outline-none focus:border-primary-500 resize-none"
+                                className="w-full border border-neutral-400 dark:border-slate-600 rounded-6 px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white focus:outline-none focus:border-primary-500 resize-none"
                             />
                         </div>
                         <div className="flex gap-3">
-                            <Button variant="primary" className="flex-1 bg-orange-500 hover:bg-orange-600"
+                            <Button variant="primary" className="flex-1 bg-warning-500 hover:bg-warning-600"
                                 onClick={handleRequestRevision}
                                 disabled={isRequestingRevision || !revisionNote.trim()}
                                 icon={Send}

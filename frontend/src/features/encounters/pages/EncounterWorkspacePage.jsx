@@ -1,28 +1,19 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
-import { usePatientDetail, usePatients } from "../../../common/hooks/usePatients";
+import { usePatientDetail } from "../../../common/hooks/usePatients";
 import { usePatientEncounters } from "../../../common/hooks/useEncounters";
 import axiosInstance from "../../../config/axios";
 import apiClient from "../../../services/api/apiClient";
 import { API_ENDPOINTS } from "../../../common/constants/apiEndpoints";
-import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
-import StatusBadge from "../../../components/ui/Badge";
-import ExplainabilityModal from "../../explainability/components/ExplainabilityModal/ExplainabilityModal";
 import DocumentVisionViewer from "../../documents/components/DocumentVisionViewer";
-import VoiceInputButton from "../../../components/ui/VoiceInputButton";
-import {
-    ArrowLeft, FileText, Beaker, Image as ImageIcon, Activity,
-    Sparkles, Brain, ChevronRight, CheckCircle, Stethoscope, Pill, Send, Info, AlertTriangle, Layers, Database,
-    Trash2, Edit2, Save, X, Loader2
-} from "lucide-react";
-import PathwayTab from "../../clinical/components/AIInsightsColumn/PathwayTab";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
-import { setSuggestedCodes, setAiGenerating } from "../../../store/slices/clinicalSlice";
-import { createEncounter, updateEncounterVitals, executeAiWorkflow, fetchAiWorkflow, validateNote } from "../../../store/slices/encounterSlice";
-import { clinicalService } from "../../../services/api/clinicalService";
+import { ArrowLeft, CheckCircle, Send, AlertTriangle } from "lucide-react";
+import { setAiGenerating } from "../../../store/slices/clinicalSlice";
+import { createEncounter, executeAiWorkflow, fetchAiWorkflow, validateNote } from "../../../store/slices/encounterSlice";
 import { logPatientChartViewed, logLabReportOpened, logImagingViewed } from "../../../services/api/auditService";
+import { notifySuccess, notifyError } from "../../../common/utils/toast";
+import { useConfirm } from "../../../contexts/ConfirmContext";
 
 
 import EvidenceTab from "../components/EvidenceTab";
@@ -31,6 +22,7 @@ import EncounterLabsTab from "../components/EncounterLabsTab";
 import EncounterImagingTab from "../components/EncounterImagingTab";
 import EncounterVitalsTab from "../components/EncounterVitalsTab";
 import EncounterAIPane from "../components/EncounterAIPane";
+import EditFindingsModal from "../components/EditFindingsModal";
 
 
 // --- MAIN PAGE ---
@@ -41,10 +33,9 @@ export default function EncounterWorkspacePage() {
     const dispatch = useDispatch();
     const { user } = useSelector(state => state.auth);
     const { pendingAiEncounterId } = useSelector(state => state.clinical);
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState("notes");
     const [activeAiTab, setActiveAiTab] = useState("summary");
-    const [isEditingAi, setIsEditingAi] = useState(false);
-    const [editableAiData, setEditableAiData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedData, setSelectedData] = useState(null);
     const [selectedVisionDoc, setSelectedVisionDoc] = useState(null);
@@ -63,12 +54,12 @@ export default function EncounterWorkspacePage() {
     const [aiError, setAiError] = useState(null);
 
     // Vision Editing State
-    const [editingVisionId, setEditingVisionId] = useState(null);
-    const [visionEditJson, setVisionEditJson] = useState("");
+    const [editingVisionRecord, setEditingVisionRecord] = useState(null);
 
     const handleDeleteVisionRecord = async (id, e) => {
-        e.stopPropagation();
-        if (!window.confirm("Are you sure you want to delete this AI analysis record? This will also remove it from the Document list.")) return;
+        if (e && e.stopPropagation) e.stopPropagation();
+        const ok = await confirm("Are you sure you want to delete this AI analysis record? This will also remove it from the Document list.");
+        if (!ok) return;
         const rec = visionResults.find(r => r.id === id);
         try {
             await apiClient.delete(`/ai/vision/results/${id}`);
@@ -79,7 +70,7 @@ export default function EncounterWorkspacePage() {
             setVisionResults(prev => prev.filter(r => r.id !== id));
         } catch (error) {
             console.error("Failed to delete vision record:", error);
-            alert("Failed to delete.");
+            notifyError("Failed to delete.");
         }
     };
 
@@ -109,32 +100,26 @@ export default function EncounterWorkspacePage() {
             }
         } catch (error) {
             console.error("Failed to verify vision record:", error);
-            alert("Failed to verify.");
+            notifyError("Failed to verify.");
         }
     };
 
     const handleStartEditVision = (rec, e) => {
-        e.stopPropagation();
-        setEditingVisionId(rec.id);
-        setVisionEditJson(JSON.stringify(rec.clinicalFindings || [], null, 2));
+        if (e && e.stopPropagation) e.stopPropagation();
+        setEditingVisionRecord(rec);
     };
 
-    const handleCancelEditVision = (e) => {
-        e.stopPropagation();
-        setEditingVisionId(null);
-        setVisionEditJson("");
-    };
-
-    const handleSaveVisionEdit = async (rec, e) => {
-        e.stopPropagation();
+    const handleSaveVisionEdit = async (id, updatedFindings) => {
         try {
-            const parsed = JSON.parse(visionEditJson);
-            await apiClient.put(`/ai/vision/results/${rec.id}`, { clinicalFindings: parsed });
-            setVisionResults(prev => prev.map(r => r.id === rec.id ? { ...r, clinicalFindings: parsed } : r));
-            setEditingVisionId(null);
+            await apiClient.put(`/ai/vision/results/${id}`, { clinicalFindings: updatedFindings });
+            setVisionResults(prev => prev.map(r => r.id === id ? { ...r, clinicalFindings: updatedFindings } : r));
+            if (selectedVisionDoc && selectedVisionDoc.id === id) {
+                setSelectedVisionDoc(prev => ({ ...prev, clinicalFindings: updatedFindings }));
+            }
+            notifySuccess("Findings updated successfully.");
         } catch (error) {
             console.error("Failed to update vision record:", error);
-            alert("Invalid JSON format or server error.");
+            notifyError("Failed to save findings.");
         }
     };
 
@@ -146,7 +131,7 @@ export default function EncounterWorkspacePage() {
         if (!labTrendView || !patient?.mrn) return;
         let isActive = true;
         setLabTrendsLoading(true);
-        dispatch(fetchLabTrends(patient.mrn))
+        apiClient.get(`/ai/vision/results/${patient.mrn}/labs/trend`)
             .then(res => { if (isActive) setLabTrends(res.data?.trends || []); })
             .catch(err => { console.error("Failed to load lab trends:", err); if (isActive) setLabTrends([]); })
             .finally(() => { if (isActive) setLabTrendsLoading(false); });
@@ -267,7 +252,6 @@ export default function EncounterWorkspacePage() {
     const [newNoteContent, setNewNoteContent] = useState("");
     const [isSavingNote, setIsSavingNote] = useState(false);
     const [noteAlert, setNoteAlert] = useState(null);
-    const [editingNoteId, setEditingNoteId] = useState(null);
 
     // Per-patient tagged notes (Prescription, Clinical Note, History, Custom)
     const [patientNotes, setPatientNotes] = useState([]);
@@ -277,10 +261,10 @@ export default function EncounterWorkspacePage() {
     const [expandedNoteId, setExpandedNoteId] = useState(null);
 
     const TAG_CONFIG = {
-        PRESCRIPTION:   { label: 'Prescription',   color: 'bg-purple-100 text-purple-700 border-purple-200' },
-        CLINICAL_NOTE:  { label: 'Clinical Note',  color: 'bg-blue-100 text-blue-700 border-blue-200' },
-        HISTORY:        { label: 'History',         color: 'bg-amber-100 text-amber-700 border-amber-200' },
-        CUSTOM:         { label: 'Custom',           color: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
+        PRESCRIPTION:   { label: 'Prescription',   color: 'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-800' },
+        CLINICAL_NOTE:  { label: 'Clinical Note',  color: 'bg-info-50 text-info-600 border-info-200 dark:bg-info-900/20 dark:text-info-500 dark:border-info-800' },
+        HISTORY:        { label: 'History',         color: 'bg-warning-50 text-warning-500 border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/30' },
+        CUSTOM:         { label: 'Custom',           color: 'bg-neutral-100 text-neutral-700 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700' },
     };
 
     const loadPatientNotes = async (mrn) => {
@@ -307,9 +291,10 @@ export default function EncounterWorkspacePage() {
             setNoteTag('CLINICAL_NOTE');
             setNoteCustomTag('');
             await loadPatientNotes(patient.mrn);
+            notifySuccess('Note saved');
         } catch (err) {
             console.error('Failed to save patient note:', err);
-            alert('Failed to save note.');
+            notifyError('Failed to save note.');
         } finally {
             setIsSavingNote(false);
         }
@@ -324,17 +309,19 @@ export default function EncounterWorkspacePage() {
             setNoteCommentInputs(prev => ({ ...prev, [note.id]: '' }));
         } catch (err) {
             console.error('Failed to save comment:', err);
+            notifyError('Failed to save comment.');
         }
     };
 
     const handleDeletePatientNote = async (noteId) => {
-        if (!window.confirm('Delete this note?')) return;
+        const ok = await confirm('Delete this note?');
+        if (!ok) return;
         try {
             await axiosInstance.delete(`/api/clinical/patients/${patient.mrn}/notes/${noteId}`);
             setPatientNotes(prev => prev.filter(n => n.id !== noteId));
         } catch (err) {
             console.error('Failed to delete note:', err);
-            alert('Failed to delete note.');
+            notifyError('Failed to delete note.');
         }
     };
 
@@ -344,7 +331,7 @@ export default function EncounterWorkspacePage() {
             setPatientNotes(prev => prev.map(n => n.id === noteId ? { ...n, content: newContent } : n));
         } catch (err) {
             console.error('Failed to edit note:', err);
-            alert('Failed to edit note.');
+            notifyError('Failed to edit note.');
             throw err;
         }
     };
@@ -439,70 +426,17 @@ export default function EncounterWorkspacePage() {
         return () => clearTimeout(timeout);
     }, [newNoteContent]);
 
-    const handleSaveNote = async () => {
-        if (!newNoteContent.trim()) return;
-        try {
-            setIsSavingNote(true);
-            const authorId = "dr.chen@hexamedplus.com";
-            let targetEncounterId = latestEncounter?.id;
-
-            if (!targetEncounterId) {
-                const newEncounterRes = await dispatch(createEncounter({
-                    patientId: patientId,
-                    encounterDate: new Date().toISOString(),
-                    encounterType: 'Outpatient',
-                    chiefComplaint: 'Initial Visit'
-                }));
-                targetEncounterId = newEncounterRes.data.id;
-            }
-            
-            if (editingNoteId) {
-                await axiosInstance.put(`/api/notes/${editingNoteId}`, {
-                    encounterId: targetEncounterId,
-                    author: authorId,
-                    noteType: "Progress",
-                    content: newNoteContent
-                });
-                setEditingNoteId(null);
-                alert("Note updated successfully!");
-            } else {
-                await axiosInstance.post(API_ENDPOINTS.NOTES.CREATE, {
-                    encounterId: targetEncounterId,
-                    author: authorId,
-                    noteType: "Progress",
-                    content: newNoteContent
-                });
-                alert("Note saved successfully!");
-            }
-            
-            setNewNoteContent("");
-            await refetchEncounters();
-        } catch (error) {
-            console.error("Failed to save note:", error);
-            alert("Failed to save note.");
-        } finally {
-            setIsSavingNote(false);
-        }
-    };
-
-    const [isSigning, setIsSigning] = useState(false);
-    const [isSavingVitals, setIsSavingVitals] = useState(false);
-    const [vitalsForm, setVitalsForm] = useState({
-        bloodPressure: '',
-        heartRate: '',
-        o2Sat: '',
-        temperature: '',
-    });
+const [isSigning, setIsSigning] = useState(false);
 
     // Encounter is locked once physician has signed it (any status except IN_PROGRESS)
     const isLocked = latestEncounter && latestEncounter.status !== 'IN_PROGRESS';
 
     const LOCKED_STATUS_LABELS = {
-        CODING_PENDING:  { text: 'Sent to Coding',     color: 'bg-amber-100 text-amber-800 border-amber-200' },
-        CODING_COMPLETE: { text: 'Under Review',       color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
-        CODING_REVISION: { text: 'Revision Requested', color: 'bg-orange-100 text-orange-800 border-orange-200' },
-        BILLING_READY:   { text: 'Ready for Billing',  color: 'bg-green-100 text-green-800 border-green-200' },
-        BILLED:          { text: 'Billed',             color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+        CODING_PENDING:  { text: 'Sent to Coding',     color: 'bg-warning-50 text-warning-500 border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/30' },
+        CODING_COMPLETE: { text: 'Under Review',       color: 'bg-info-50 text-info-600 border-info-200 dark:bg-info-500/10 dark:text-info-500 dark:border-info-500/30' },
+        CODING_REVISION: { text: 'Revision Requested', color: 'bg-danger-50 text-danger-600 border-danger-200 dark:bg-danger-500/10 dark:text-danger-500 dark:border-danger-500/30' },
+        BILLING_READY:   { text: 'Ready for Billing',  color: 'bg-primary-50 text-primary-600 border-primary-200 dark:bg-primary-500/10 dark:text-primary-400 dark:border-primary-500/30' },
+        BILLED:          { text: 'Billed',             color: 'bg-success-50 text-success-600 border-success-200 dark:bg-success-500/10 dark:text-success-500 dark:border-success-500/30' },
     };
 
     const handleCreateNewEncounter = async () => {
@@ -516,7 +450,7 @@ export default function EncounterWorkspacePage() {
             await refetchEncounters();
         } catch (error) {
             console.error("Failed to create new encounter", error);
-            alert("Failed to start a new encounter.");
+            notifyError("Failed to start a new encounter.");
         }
     };
 
@@ -530,7 +464,7 @@ export default function EncounterWorkspacePage() {
             await refetchEncounters();
         } catch (error) {
             console.error("Failed to sign encounter", error);
-            alert("Failed to sign encounter.");
+            notifyError("Failed to sign encounter.");
         } finally {
             setIsSigning(false);
         }
@@ -590,7 +524,7 @@ export default function EncounterWorkspacePage() {
                         confidenceFactors: [{ label: "Vector Similarity", weight: 95 }],
                         guidelines: [{ title: citationText, section: "Highlighting Exact Match in Document..." }]
                     })}
-                    className="inline-flex items-center px-1.5 py-0.5 mx-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200 transition-colors text-[10px] font-bold cursor-pointer"
+                    className="inline-flex items-center px-1.5 py-0.5 mx-1 rounded-6 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/30 border border-primary-200 dark:border-primary-800 transition-colors text-[10px] font-bold cursor-pointer"
                 >
                     {citationText}
                 </button>
@@ -608,14 +542,14 @@ export default function EncounterWorkspacePage() {
         <div className="flex flex-col h-[calc(100vh-64px)] animate-fade-in">
 
             {/* Top Header */}
-            <div className="bg-white border-b border-neutral-500 px-6 py-3 flex items-center justify-between shadow-sm">
+            <div className="bg-white dark:bg-neutral-900 border-b border-neutral-500 dark:border-neutral-800 px-6 py-3 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(-1)} className="p-2 rounded-4 hover:bg-neutral-100 transition-colors">
-                        <ArrowLeft className="w-5 h-5 text-neutral-700" />
+                    <button onClick={() => navigate(-1)} className="p-2 rounded-6 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                        <ArrowLeft className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
                     </button>
                     <div>
-                        <h2 className="text-xl font-bold text-neutral-900">{patient.firstName} {patient.lastName}</h2>
-                        <p className="text-xs text-neutral-600">
+                        <h2 className="text-xl font-bold text-neutral-900 dark:text-white">{patient.firstName} {patient.lastName}</h2>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400">
                             {patient.dob} / {patient.gender} · MRN: {patient.mrn}
                         </p>
                     </div>
@@ -631,7 +565,7 @@ export default function EncounterWorkspacePage() {
                             {isSigning ? "Signing..." : "Sign Encounter"}
                         </Button>
                     ) : (
-                        <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold ${
+                        <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-6 border text-xs font-bold ${
                             (LOCKED_STATUS_LABELS[latestEncounter?.status] || LOCKED_STATUS_LABELS.CODING_PENDING).color
                         }`}>
                             <CheckCircle className="w-3.5 h-3.5" />
@@ -646,18 +580,18 @@ export default function EncounterWorkspacePage() {
 
                 
                 {/* Left Pane: Clinical Evidence */}
-                <div className="flex-1 bg-neutral-50 flex flex-col border-r border-neutral-500">
+                <div className="flex-1 bg-neutral-50 dark:bg-neutral-900/50 flex flex-col border-r border-neutral-500 dark:border-neutral-800">
                     <EvidenceTab activeTab={activeTab} setActiveTab={setActiveTab} />
 
                     <div className="flex-1 p-6 overflow-y-auto">
                         {/* Locked banner */}
                         {isLocked && (
-                            <div className="max-w-3xl mx-auto mb-4 flex items-start justify-between gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <div className="max-w-3xl mx-auto mb-4 flex items-start justify-between gap-3 p-3 bg-warning-50 dark:bg-warning-500/10 border border-warning-200 dark:border-warning-500/30 rounded-8">
                                 <div className="flex items-start gap-3">
-                                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                    <AlertTriangle className="w-4 h-4 text-warning-500 shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="text-xs font-bold text-amber-800">Encounter Locked for Editing</p>
-                                        <p className="text-xs text-amber-700 mt-0.5">This encounter has been signed and is currently <strong>{latestEncounter?.status?.replace(/_/g, ' ')}</strong>. Notes cannot be modified.</p>
+                                        <p className="text-xs font-bold text-warning-500">Encounter Locked for Editing</p>
+                                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">This encounter has been signed and is currently <strong>{latestEncounter?.status?.replace(/_/g, ' ')}</strong>. Notes cannot be modified.</p>
                                     </div>
                                 </div>
                                 <Button size="sm" variant="primary" onClick={handleCreateNewEncounter}>Start New Encounter</Button>
@@ -690,8 +624,6 @@ export default function EncounterWorkspacePage() {
                                 visionResults={visionResults} visionLoading={visionLoading}
                                 setSelectedVisionDoc={setSelectedVisionDoc} handleVerifyVisionRecord={handleVerifyVisionRecord}
                                 handleStartEditVision={handleStartEditVision} handleDeleteVisionRecord={handleDeleteVisionRecord}
-                                editingVisionId={editingVisionId} visionEditJson={visionEditJson} setVisionEditJson={setVisionEditJson}
-                                handleCancelEditVision={handleCancelEditVision} handleSaveVisionEdit={handleSaveVisionEdit}
                                 unarchivedAt={patient?.unarchivedAt}
                                 patient={patient}
                             />
@@ -702,8 +634,6 @@ export default function EncounterWorkspacePage() {
                                 visionResults={visionResults} visionLoading={visionLoading}
                                 setSelectedVisionDoc={setSelectedVisionDoc} handleVerifyVisionRecord={handleVerifyVisionRecord}
                                 handleStartEditVision={handleStartEditVision} handleDeleteVisionRecord={handleDeleteVisionRecord}
-                                editingVisionId={editingVisionId} visionEditJson={visionEditJson} setVisionEditJson={setVisionEditJson}
-                                handleCancelEditVision={handleCancelEditVision} handleSaveVisionEdit={handleSaveVisionEdit}
                                 unarchivedAt={patient?.unarchivedAt}
                                 patient={patient}
                             />
@@ -743,6 +673,15 @@ export default function EncounterWorkspacePage() {
                         setSelectedVisionDoc(null);
                     }}
                     onVerify={(id) => handleVerifyVisionRecord(id)}
+                    onEditFindings={(rec) => setEditingVisionRecord(rec)}
+                />
+            )}
+
+            {editingVisionRecord && (
+                <EditFindingsModal
+                    record={editingVisionRecord}
+                    onClose={() => setEditingVisionRecord(null)}
+                    onSave={handleSaveVisionEdit}
                 />
             )}
         </div>

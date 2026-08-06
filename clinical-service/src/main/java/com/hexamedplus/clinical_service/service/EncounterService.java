@@ -3,6 +3,7 @@ package com.hexamedplus.clinical_service.service;
 import com.hexamedplus.clinical_service.dto.EncounterDto;
 import com.hexamedplus.clinical_service.entity.EncounterEntity;
 import com.hexamedplus.clinical_service.repository.EncounterRepository;
+import com.hexamedplus.clinical_service.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -16,6 +17,7 @@ import java.util.UUID;
 public class EncounterService {
 
     private final EncounterRepository encounterRepository;
+    private final PatientRepository patientRepository;
 
     private EncounterDto.Response mapToResponse(EncounterEntity entity) {
         return EncounterDto.Response.builder()
@@ -116,6 +118,16 @@ public class EncounterService {
                     if (optional.isPresent()) {
                         EncounterEntity entity = optional.get();
                         entity.setStatus(status);
+                        
+                        if ("BILLED".equals(status)) {
+                            entity.setBilledAt(java.time.LocalDateTime.now());
+                            patientRepository.findById(entity.getPatientId()).ifPresent(p -> {
+                                p.setArchived(true);
+                                p.setArchivedAt(java.time.LocalDateTime.now());
+                                patientRepository.save(p);
+                            });
+                        }
+                        
                         return Mono.fromCallable(() -> encounterRepository.save(entity))
                                 .subscribeOn(Schedulers.boundedElastic());
                     }

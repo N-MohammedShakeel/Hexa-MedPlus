@@ -37,17 +37,17 @@ function NewChatModal({ onClose, onCreate }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md border border-neutral-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-slate-900 rounded-8 shadow-2xl w-full max-w-md border border-neutral-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b border-neutral-200 dark:border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {step !== 'mode' && (
-              <button onClick={() => setStep('mode')} className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-slate-800 text-neutral-500">
+              <button onClick={() => setStep('mode')} className="p-1 rounded-6 hover:bg-neutral-100 dark:hover:bg-slate-800 text-neutral-500">
                 <ChevronLeft className="w-4 h-4" />
               </button>
             )}
             <h3 className="text-sm font-bold text-neutral-900 dark:text-white">New Conversation</h3>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-slate-800 text-neutral-500">
+          <button onClick={onClose} className="p-1 rounded-6 hover:bg-neutral-100 dark:hover:bg-slate-800 text-neutral-500">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -59,7 +59,7 @@ function NewChatModal({ onClose, onCreate }) {
             </p>
             <button
               onClick={() => onCreate('general', null, null)}
-              className="w-full text-left p-3 rounded-lg border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
+              className="w-full text-left p-3 rounded-6 border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
             >
               <Globe className="w-4 h-4 text-primary-500 mt-0.5" />
               <span>
@@ -69,7 +69,7 @@ function NewChatModal({ onClose, onCreate }) {
             </button>
             <button
               onClick={() => setStep('patient')}
-              className="w-full text-left p-3 rounded-lg border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
+              className="w-full text-left p-3 rounded-6 border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
             >
               <Users className="w-4 h-4 text-primary-500 mt-0.5" />
               <span>
@@ -79,7 +79,7 @@ function NewChatModal({ onClose, onCreate }) {
             </button>
             <button
               onClick={() => setStep('protocol')}
-              className="w-full text-left p-3 rounded-lg border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
+              className="w-full text-left p-3 rounded-6 border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
             >
               <BookOpen className="w-4 h-4 text-primary-500 mt-0.5" />
               <span>
@@ -97,7 +97,7 @@ function NewChatModal({ onClose, onCreate }) {
               value={patientQuery}
               onChange={e => setPatientQuery(e.target.value)}
               placeholder="Search patient by name or MRN..."
-              className="w-full px-3 py-2 border border-neutral-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-neutral-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 border border-neutral-300 dark:border-slate-600 rounded-6 text-sm bg-white dark:bg-slate-800 text-neutral-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
             <div className="max-h-64 overflow-y-auto space-y-1">
               {loadingPatients ? (
@@ -108,7 +108,7 @@ function NewChatModal({ onClose, onCreate }) {
                 <button
                   key={p.id}
                   onClick={() => onCreate('patient', p.mrn, `${p.firstName} ${p.lastName}`)}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-sm text-neutral-800 dark:text-slate-200 flex items-center justify-between"
+                  className="w-full text-left px-3 py-2 rounded-6 hover:bg-primary-50 dark:hover:bg-primary-900/20 text-sm text-neutral-800 dark:text-slate-200 flex items-center justify-between"
                 >
                   <span>{p.firstName} {p.lastName}</span>
                   <span className="text-xs text-neutral-400 font-mono">{p.mrn}</span>
@@ -129,7 +129,7 @@ function NewChatModal({ onClose, onCreate }) {
                 <button
                   key={doc.id}
                   onClick={() => onCreate('protocol', doc.fileKey, doc.fileName)}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-sm text-neutral-800 dark:text-slate-200"
+                  className="w-full text-left px-3 py-2 rounded-6 hover:bg-primary-50 dark:hover:bg-primary-900/20 text-sm text-neutral-800 dark:text-slate-200"
                 >
                   {doc.fileName}
                 </button>
@@ -149,7 +149,7 @@ function SessionSidebar({ sessions, activeId, onSelect, onNew, onDelete }) {
       <div className="p-4 border-b border-neutral-200 dark:border-slate-700">
         <button
           onClick={onNew}
-          className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold transition-colors"
+          className="w-full flex items-center gap-2 px-4 py-2.5 rounded-6 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold transition-colors"
         >
           <Plus className="w-4 h-4" />
           New Conversation
@@ -165,7 +165,7 @@ function SessionSidebar({ sessions, activeId, onSelect, onNew, onDelete }) {
             <div
               key={s.id}
               onClick={() => onSelect(s.id)}
-              className={`group flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg cursor-pointer text-sm transition-colors ${
+              className={`group flex items-center justify-between gap-2 px-3 py-2.5 rounded-6 cursor-pointer text-sm transition-colors ${
                 s.id === activeId
                   ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 font-semibold'
                   : 'text-neutral-700 dark:text-slate-300 hover:bg-neutral-100 dark:hover:bg-slate-800'
@@ -182,7 +182,7 @@ function SessionSidebar({ sessions, activeId, onSelect, onNew, onDelete }) {
               </div>
               <button
                 onClick={e => { e.stopPropagation(); onDelete(s.id); }}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/40 text-red-500 transition-all flex-shrink-0"
+                className="opacity-0 group-hover:opacity-100 p-1 rounded-6 hover:bg-danger-50 dark:hover:bg-danger-900/40 text-danger-500 transition-all flex-shrink-0"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -200,14 +200,14 @@ function MessageBubble({ role, content }) {
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-        isUser ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-gradient-to-br from-violet-500 to-purple-700'
+        isUser ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-primary-500'
       }`}>
         {isUser
           ? <User className="w-4 h-4 text-primary-600 dark:text-primary-400" />
           : <Bot className="w-4 h-4 text-white" />
         }
       </div>
-      <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+      <div className={`max-w-[75%] px-4 py-3 rounded-8 text-sm leading-relaxed ${
         isUser
           ? 'bg-primary-600 text-white rounded-tr-sm'
           : 'bg-white dark:bg-slate-800 text-neutral-800 dark:text-slate-200 border border-neutral-200 dark:border-slate-700 rounded-tl-sm shadow-sm'
@@ -325,7 +325,7 @@ export default function ChatPage() {
   const activeModeMeta = MODE_META[activeSession?.mode] || MODE_META.general;
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] -m-6 rounded-xl overflow-hidden border border-neutral-200 dark:border-slate-700 bg-neutral-50 dark:bg-slate-900">
+    <div className="flex h-[calc(100vh-5rem)] -m-6 rounded-8 overflow-hidden border border-neutral-200 dark:border-slate-700 bg-neutral-50 dark:bg-slate-900">
       {/* Sidebar */}
       <SessionSidebar
         sessions={sessions}
@@ -342,7 +342,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-neutral-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <div>
@@ -356,8 +356,8 @@ export default function ChatPage() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Online</span>
+            <div className="w-2 h-2 rounded-full bg-success-500 animate-pulse" />
+            <span className="text-xs text-success-600 dark:text-success-500 font-medium">Online</span>
           </div>
         </div>
 
@@ -365,9 +365,7 @@ export default function ChatPage() {
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {hasNoSession && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-lg">
-                <Bot className="w-8 h-8 text-white" />
-              </div>
+              <Bot className="w-10 h-10 text-primary-500" strokeWidth={1.5} />
               <div>
                 <h3 className="text-lg font-bold text-neutral-900 dark:text-white">Hexa Medical AI</h3>
                 <p className="text-sm text-neutral-500 dark:text-slate-400 mt-1 max-w-sm">
@@ -384,7 +382,7 @@ export default function ChatPage() {
                   <button
                     key={q}
                     onClick={() => { setInput(q); textareaRef.current?.focus(); }}
-                    className="text-left px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-neutral-700 dark:text-slate-300 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                    className="text-left px-3 py-2.5 rounded-6 border border-neutral-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-neutral-700 dark:text-slate-300 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
                   >
                     {q}
                   </button>
@@ -401,12 +399,12 @@ export default function ChatPage() {
           )}
           {isStreaming && !streamingContent && (
             <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
                 <Bot className="w-4 h-4 text-white" />
               </div>
-              <div className="bg-white dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2">
+              <div className="bg-white dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 rounded-8 rounded-tl-sm px-4 py-3 flex items-center gap-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
-                <span className="text-xs text-neutral-500">Thinking...</span>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">Thinking...</span>
               </div>
             </div>
           )}
@@ -415,7 +413,7 @@ export default function ChatPage() {
 
         {/* Input Bar */}
         <div className="p-4 border-t border-neutral-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-          <div className="flex items-end gap-3 bg-neutral-50 dark:bg-slate-800 border border-neutral-200 dark:border-slate-600 rounded-xl px-4 py-3 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all">
+          <div className="flex items-end gap-3 bg-neutral-50 dark:bg-slate-800 border border-neutral-200 dark:border-slate-600 rounded-8 px-4 py-3 focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 dark:focus-within:ring-primary-900/30 transition-all">
             <textarea
               ref={textareaRef}
               value={input}
@@ -432,7 +430,7 @@ export default function ChatPage() {
             <button
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}
-              className="w-9 h-9 rounded-lg bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-200 dark:disabled:bg-slate-700 flex items-center justify-center transition-colors flex-shrink-0"
+              className="w-9 h-9 rounded-6 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-200 dark:disabled:bg-slate-700 flex items-center justify-center transition-colors flex-shrink-0"
             >
               {isStreaming
                 ? <Loader2 className="w-4 h-4 text-white animate-spin" />

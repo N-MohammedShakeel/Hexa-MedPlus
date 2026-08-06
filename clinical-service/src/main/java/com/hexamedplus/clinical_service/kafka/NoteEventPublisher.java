@@ -13,6 +13,7 @@ public class NoteEventPublisher {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private static final String TOPIC = "clinical.note.created";
+    private static final String DELETED_TOPIC = "clinical.note.deleted";
 
     public void publishNoteCreatedEvent(String noteId, String encounterId, String content) {
         Map<String, String> event = Map.of(
@@ -26,5 +27,16 @@ public class NoteEventPublisher {
 
         log.info("Publishing event to {}: {}", TOPIC, event);
         kafkaTemplate.send(TOPIC, noteId, event);
+    }
+
+    public void publishNoteDeletedEvent(String noteId) {
+        Map<String, String> event = Map.of(
+                "noteId", noteId,
+                "triggeredBy", "clinical-service",
+                "timestamp", java.time.Instant.now().toString()
+        );
+
+        log.info("Publishing event to {}: {}", DELETED_TOPIC, event);
+        kafkaTemplate.send(DELETED_TOPIC, noteId, event);
     }
 }

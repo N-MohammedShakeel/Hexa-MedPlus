@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { loginStart, loginSuccess } from "../../../store/slices/authSlice";
+import { loginStart, loginSuccess, loginFailure } from "../../../store/slices/authSlice";
 import Button from "../../../components/ui/Button";
 import Input from "../../../components/ui/Input";
 import { Mail, Lock, ArrowRight } from "lucide-react";
 import { logLoginSuccess, logLoginFailed } from "../../../services/api/auditService";
+import { notifyError } from "../../../common/utils/toast";
 
 export default function LoginPage() {
     const dispatch = useDispatch();
@@ -61,17 +62,25 @@ export default function LoginPage() {
             console.error("Login failed", error);
             // AUDIT: Log failed login attempt
             logLoginFailed(email);
-            setLocalError("Invalid credentials or server unavailable.");
-            dispatch({ type: "auth/loginFailure", payload: error.message });
+            const errorMsg = error.response?.data?.message || "Invalid credentials or server unavailable.";
+            setLocalError(errorMsg);
+            notifyError(errorMsg);
+            dispatch(loginFailure(errorMsg));
         }
     };
 
     return (
         <div>
-            <h2 className="text-3xl font-bold text-neutral-900 mb-2">Welcome Back</h2>
-            <p className="text-neutral-600 mb-8 leading-relaxed">
+            <h2 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Welcome Back</h2>
+            <p className="text-neutral-600 dark:text-neutral-400 mb-8 leading-relaxed">
                 Enter your credentials to access the Hexa MedPlus clinical workspace.
             </p>
+
+            {localError && (
+                <div className="mb-5 rounded-6 border border-danger-200 dark:border-danger-500/40 bg-danger-50 dark:bg-danger-500/10 px-4 py-3 text-sm text-danger-700 dark:text-danger-200">
+                    {localError}
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
                 <Input
@@ -86,8 +95,8 @@ export default function LoginPage() {
 
                 <div>
                     <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-semibold text-neutral-800">Password</label>
-                        <a href="#" className="text-xs font-semibold text-primary-600 hover:underline">
+                        <label className="block text-xs font-semibold text-neutral-800 dark:text-neutral-300">Password</label>
+                        <a href="#" className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline">
                             Forgot password?
                         </a>
                     </div>
@@ -108,9 +117,9 @@ export default function LoginPage() {
                             id="remember" 
                             checked={rememberMe}
                             onChange={(e) => setRememberMe(e.target.checked)}
-                            className="w-4 h-4 rounded border-neutral-400 text-primary-600 focus:ring-primary-500" 
+                            className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-600 dark:bg-neutral-800 text-primary-600 focus:ring-primary-500"
                         />
-                        <label htmlFor="remember" className="text-sm font-medium text-neutral-700">Remember me for 30 days</label>
+                        <label htmlFor="remember" className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Remember me for 30 days</label>
                     </div>
                 </div>
 
@@ -125,10 +134,10 @@ export default function LoginPage() {
                 </Button>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-neutral-200">
-                <p className="text-center text-sm text-neutral-600">
+            <div className="mt-8 pt-8 border-t border-neutral-200 dark:border-neutral-700">
+                <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
                     Don't have an account?{" "}
-                    <a href="mailto:nmohammedshakeel21@gmail.com?subject=Hexa%20MedPlus%20-%20Access%20Request" className="font-semibold text-primary-600 hover:underline">
+                    <a href="mailto:nmohammedshakeel21@gmail.com?subject=Hexa%20MedPlus%20-%20Access%20Request" className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">
                         Request access
                     </a>
                 </p>

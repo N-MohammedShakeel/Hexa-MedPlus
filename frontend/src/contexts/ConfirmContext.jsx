@@ -35,8 +35,8 @@ export function ConfirmProvider({ children }) {
             {children}
             {confirmState.isOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-900/50 backdrop-blur-sm p-4 animate-fade-in" onClick={() => handleClose(false)}>
-                    <div 
-                        className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden" 
+                    <div
+                        className="bg-white dark:bg-neutral-900 rounded-8 shadow-xl w-full max-w-sm overflow-hidden"
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="p-5 flex gap-4">

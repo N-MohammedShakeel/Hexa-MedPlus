@@ -267,8 +267,10 @@ export const fetchAiWorkflow = (encounterId) => {
       dispatch(encounterActions.setAiWorkflowResult({ encounterId, result: response.data }));
       return response.data;
     } catch (error) {
-      console.error("Failed to fetch AI workflow", error);
-      throw error;
+      if (error?.response?.status !== 404) {
+        console.error("Failed to fetch AI workflow", error);
+      }
+      return null;
     }
   };
 };

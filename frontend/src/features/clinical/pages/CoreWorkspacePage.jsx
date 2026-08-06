@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams } from "react-router-dom";
 import {
@@ -10,8 +10,9 @@ import {
 import { selectPatientById } from "../../../store/slices/patientSlice";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
+import EmptyState from "../../../components/ui/EmptyState";
 import ProtocolMatchPanel from "../components/ProtocolMatchPanel";
-import { Sparkles, Brain, FileText, Activity, HeartPulse } from "lucide-react";
+import { Sparkles, Brain, AlertTriangle, FlaskConical, ScanLine } from "lucide-react";
 
 export default function CoreWorkspacePage() {
     const { patientId } = useParams();
@@ -19,7 +20,8 @@ export default function CoreWorkspacePage() {
     const { isAiLoading, aiSummary, suggestedCodes, activeAiTab } = useSelector(
         (state) => state.clinical
     );
-    
+    const [activeDataTab, setActiveDataTab] = useState("Notes");
+
     // Fetch patient from Redux
     const patient = useSelector(state => selectPatientById(state, patientId));
 
@@ -84,8 +86,9 @@ export default function CoreWorkspacePage() {
                         <h3 className="text-xs font-semibold text-neutral-800 dark:text-slate-300 uppercase tracking-wider mb-2">Allergies</h3>
                         <div className="flex flex-wrap gap-2">
                             {(activePatient.allergies || ["Penicillin", "Sulfa Drugs"]).map((a) => (
-                                <span key={a} className="px-2 py-1 bg-danger-50 dark:bg-danger-900/30 text-danger-600 dark:text-danger-400 text-xs font-medium rounded-2 border border-danger-200 dark:border-danger-700/50">
-                                    ⚠️ {a}
+                                <span key={a} className="inline-flex items-center gap-1 px-2 py-1 bg-danger-50 dark:bg-danger-500/10 text-danger-600 dark:text-danger-500 text-xs font-medium rounded-6 border border-danger-200 dark:border-danger-700/50">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {a}
                                 </span>
                             ))}
                         </div>
@@ -111,12 +114,13 @@ export default function CoreWorkspacePage() {
                 </div>
 
                 {/* Column 2: Clinical Evidence (Middle - 4 Cols) */}
-                <div className="col-span-4 bg-white dark:bg-slate-900 rounded-4 shadow-card border border-neutral-400 dark:border-slate-700 flex flex-col overflow-hidden">
+                <div className="col-span-4 bg-white dark:bg-slate-900 rounded-8 shadow-card border border-neutral-400 dark:border-slate-700 flex flex-col overflow-hidden">
                     <div className="flex border-b border-neutral-400 dark:border-slate-700 bg-neutral-100 dark:bg-slate-800/50 px-4 pt-2">
                         {["Notes", "Labs", "Imaging"].map((tab) => (
                             <button
                                 key={tab}
-                                className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === "Notes" ? "border-primary-500 text-primary-600 dark:text-primary-400" : "border-transparent text-neutral-600 dark:text-slate-400 hover:text-neutral-900 dark:hover:text-slate-200"
+                                onClick={() => setActiveDataTab(tab)}
+                                className={`px-4 py-2 text-sm font-medium border-b-2 ${activeDataTab === tab ? "border-primary-500 text-primary-600 dark:text-primary-400" : "border-transparent text-neutral-600 dark:text-slate-400 hover:text-neutral-900 dark:hover:text-slate-200"
                                     }`}
                             >
                                 {tab}
@@ -124,18 +128,36 @@ export default function CoreWorkspacePage() {
                         ))}
                     </div>
                     <div className="flex-1 p-4 overflow-y-auto">
-                        <div className="mb-4 flex justify-between items-center">
-                            <h4 className="font-semibold text-neutral-900 dark:text-slate-100 text-sm">General Progress Note</h4>
-                            <span className="text-xs bg-info-50 dark:bg-info-900/30 text-info-500 dark:text-info-400 px-2 py-0.5 rounded-2 font-medium">H&P</span>
-                        </div>
-                        <div className="text-sm text-neutral-800 dark:text-slate-300 leading-relaxed bg-neutral-50 dark:bg-slate-800 p-4 rounded-4 border border-neutral-400 dark:border-slate-700 whitespace-pre-wrap">
-                            {activePatient.notes || `CHIEF COMPLAINT: Fatigue and polyuria x 3 weeks.\n\nHISTORY OF PRESENT ILLNESS: Patient presents with a history of T2DM and HTN presenting with increased fatigue...`}
-                        </div>
+                        {activeDataTab === "Notes" && (
+                            <>
+                                <div className="mb-4 flex justify-between items-center">
+                                    <h4 className="font-semibold text-neutral-900 dark:text-slate-100 text-sm">General Progress Note</h4>
+                                    <span className="text-xs bg-info-50 dark:bg-info-500/10 text-info-500 dark:text-info-500 px-2 py-0.5 rounded-6 font-medium">H&P</span>
+                                </div>
+                                <div className="text-sm text-neutral-800 dark:text-slate-300 leading-relaxed bg-neutral-50 dark:bg-slate-800 p-4 rounded-8 border border-neutral-400 dark:border-slate-700 whitespace-pre-wrap">
+                                    {activePatient.notes || `CHIEF COMPLAINT: Fatigue and polyuria x 3 weeks.\n\nHISTORY OF PRESENT ILLNESS: Patient presents with a history of T2DM and HTN presenting with increased fatigue...`}
+                                </div>
+                            </>
+                        )}
+                        {activeDataTab === "Labs" && (
+                            <EmptyState
+                                icon={FlaskConical}
+                                title="No Lab Data Linked Yet"
+                                description="Lab results are not yet wired into this workspace view."
+                            />
+                        )}
+                        {activeDataTab === "Imaging" && (
+                            <EmptyState
+                                icon={ScanLine}
+                                title="No Imaging Linked Yet"
+                                description="Imaging studies are not yet wired into this workspace view."
+                            />
+                        )}
                     </div>
                 </div>
 
                 {/* Column 3: AI Workspace (Right - 5 Cols) */}
-                <div className="col-span-5 bg-white dark:bg-slate-900 rounded-4 shadow-card border border-neutral-400 dark:border-slate-700 flex flex-col overflow-hidden">
+                <div className="col-span-5 bg-white dark:bg-slate-900 rounded-8 shadow-card border border-neutral-400 dark:border-slate-700 flex flex-col overflow-hidden">
                     
                     {/* Add Protocol Match Panel above AI Tabs when available */}
                     <div className="p-4 pb-0">
@@ -178,11 +200,11 @@ export default function CoreWorkspacePage() {
                                     <div className="flex-1 h-1.5 bg-neutral-300 dark:bg-slate-700 rounded-full overflow-hidden">
                                         <div className="h-full bg-success-500 rounded-full" style={{ width: `${aiSummary.confidence}%` }}></div>
                                     </div>
-                                    <span className="text-sm font-bold text-success-600 dark:text-success-400">{aiSummary.confidence.toFixed(0)}%</span>
+                                    <span className="text-sm font-bold text-success-600 dark:text-success-500">{aiSummary.confidence.toFixed(0)}%</span>
                                 </div>
 
                                 {["subjective", "objective", "assessment", "plan"].map((section) => (
-                                    <div key={section} className="border border-neutral-400 dark:border-slate-700 rounded-4 overflow-hidden">
+                                    <div key={section} className="border border-neutral-400 dark:border-slate-700 rounded-8 overflow-hidden">
                                         <div className="p-3 bg-neutral-100 dark:bg-slate-800/50">
                                             <span className="text-xs font-bold text-neutral-900 dark:text-slate-200 uppercase tracking-wider">{section}</span>
                                         </div>
@@ -195,18 +217,18 @@ export default function CoreWorkspacePage() {
                         {aiSummary && activeAiTab === "diagnosis" && (
                             <div className="space-y-4 animate-fade-in">
                                 <h4 className="text-sm font-bold text-neutral-900 dark:text-slate-100">AI Suggested Diagnoses</h4>
-                                <div className="border border-primary-300 dark:border-primary-700/50 bg-primary-50 dark:bg-primary-900/20 p-4 rounded-4">
+                                <div className="border border-primary-300 dark:border-primary-700/50 bg-primary-50 dark:bg-primary-900/20 p-4 rounded-8">
                                     <div className="flex justify-between items-start mb-2">
                                         <h5 className="font-bold text-primary-700 dark:text-primary-400">1. Type 2 Diabetes Mellitus with Hyperglycemia</h5>
-                                        <span className="text-xs font-bold text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-800 px-2 py-1 rounded-4 border border-primary-200 dark:border-primary-700/50">96% Match</span>
+                                        <span className="text-xs font-bold text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-800 px-2 py-1 rounded-6 border border-primary-200 dark:border-primary-700/50">96% Match</span>
                                     </div>
                                     <p className="text-xs text-neutral-700 dark:text-slate-300 mb-2">Based on Chief Complaint, elevated HbA1c (8.2%), and current Metformin prescription.</p>
                                     <div className="text-[10px] text-neutral-600 dark:text-slate-400 font-mono">ICD-10: E11.65</div>
                                 </div>
-                                <div className="border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 rounded-4">
+                                <div className="border border-neutral-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 rounded-8">
                                     <div className="flex justify-between items-start mb-2">
                                         <h5 className="font-bold text-neutral-900 dark:text-slate-200">2. Essential Hypertension</h5>
-                                        <span className="text-xs font-bold text-neutral-600 dark:text-slate-400 bg-neutral-100 dark:bg-slate-700 px-2 py-1 rounded-4">88% Match</span>
+                                        <span className="text-xs font-bold text-neutral-600 dark:text-slate-400 bg-neutral-100 dark:bg-slate-700 px-2 py-1 rounded-6">88% Match</span>
                                     </div>
                                     <p className="text-xs text-neutral-700 dark:text-slate-300 mb-2">Based on vitals history and active Lisinopril medication.</p>
                                     <div className="text-[10px] text-neutral-600 dark:text-slate-400 font-mono">ICD-10: I10</div>
@@ -222,7 +244,7 @@ export default function CoreWorkspacePage() {
                                         <div className="absolute w-3 h-3 bg-primary-500 rounded-full -left-[23px] top-1"></div>
                                         <h5 className="text-sm font-bold text-neutral-900 dark:text-slate-200">Step 1: Medication Adjustment</h5>
                                         <p className="text-xs text-neutral-700 dark:text-slate-300 mt-1">Increase Metformin or add GLP-1 receptor agonist due to uncontrolled HbA1c.</p>
-                                        <span className="inline-block mt-2 text-[10px] bg-neutral-200 dark:bg-slate-700 text-neutral-800 dark:text-slate-300 px-2 py-1 rounded">Guideline: ADA 2024</span>
+                                        <span className="inline-block mt-2 text-[10px] bg-neutral-200 dark:bg-slate-700 text-neutral-800 dark:text-slate-300 px-2 py-1 rounded-6">Guideline: ADA 2024</span>
                                     </div>
                                     <div className="relative">
                                         <div className="absolute w-3 h-3 bg-neutral-300 dark:bg-slate-600 rounded-full -left-[23px] top-1"></div>
@@ -242,7 +264,7 @@ export default function CoreWorkspacePage() {
                             <div className="space-y-3 animate-fade-in">
                                 <h4 className="text-sm font-bold text-neutral-900 dark:text-slate-100">Suggested ICD-10 Codes</h4>
                                 {suggestedCodes.map((c) => (
-                                    <div key={c.code} className="flex items-center justify-between p-3 border border-neutral-400 dark:border-slate-700 rounded-4 bg-white dark:bg-slate-800/50">
+                                    <div key={c.code} className="flex items-center justify-between p-3 border border-neutral-400 dark:border-slate-700 rounded-8 bg-white dark:bg-slate-800/50">
                                         <div className="flex items-center gap-3">
                                             <div>
                                                 <span className="font-mono font-bold text-sm text-neutral-900 dark:text-slate-200">{c.code}</span>

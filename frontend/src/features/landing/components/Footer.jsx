@@ -44,23 +44,23 @@ export default function Footer() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-neutral-200 bg-white py-12">
+      <footer className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 py-12">
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center shadow-sm">
                 <HeartPulse className="w-4 h-4 text-white" />
               </div>
-              <span className="text-lg font-bold text-neutral-900 tracking-tight">
+              <span className="text-lg font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
                 Hexa <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">MedPlus</span>
               </span>
             </div>
-            <div className="flex gap-6 text-sm font-medium text-neutral-400">
+            <div className="flex gap-6 text-sm font-medium text-neutral-400 dark:text-neutral-500">
               {["Privacy Policy", "Terms of Service", "HIPAA Compliance", "Security", "Contact"].map((l) => (
-                <a key={l} href="#" className="hover:text-primary-600 transition-colors">{l}</a>
+                <a key={l} href="#" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">{l}</a>
               ))}
             </div>
-            <div className="text-sm font-medium text-neutral-400">
+            <div className="text-sm font-medium text-neutral-400 dark:text-neutral-500">
               © {new Date().getFullYear()} Hexa MedPlus AI. All rights reserved.
             </div>
           </div>

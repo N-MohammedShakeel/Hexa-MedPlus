@@ -3,6 +3,10 @@ import { UploadCloud, File, AlertCircle, CheckCircle, FileText, Beaker, Image as
 import axiosInstance from '../../../config/axios';
 import { Card } from '../../../components/ui/Card';
 import Button from '../../../components/ui/Button';
+import StatusBadge from '../../../components/ui/Badge';
+import EmptyState from '../../../components/ui/EmptyState';
+import { useConfirm } from '../../../contexts/ConfirmContext';
+import { notifyError } from '../../../common/utils/toast';
 
 const DOCUMENT_TYPES = [
     { value: 'GUIDELINE', label: 'Clinical Protocol / Guideline', category: 'Clinical Protocol', icon: Shield },
@@ -23,6 +27,7 @@ export default function DocumentUploadPage() {
     const [docsLoading, setDocsLoading] = useState(false);
     const [activeFilter, setActiveFilter] = useState('All');
     const fileInputRef = React.useRef(null);
+    const confirm = useConfirm();
 
     const fetchDocuments = async (category = null) => {
         setDocsLoading(true);
@@ -34,6 +39,7 @@ export default function DocumentUploadPage() {
             setDocuments(res.data || []);
         } catch (err) {
             console.error('Failed to load documents:', err);
+            notifyError('Failed to load documents.');
         } finally {
             setDocsLoading(false);
         }
@@ -107,11 +113,14 @@ export default function DocumentUploadPage() {
     };
 
     const handleDelete = async (id) => {
+        const ok = await confirm('Are you sure you want to delete this document?');
+        if (!ok) return;
         try {
             await axiosInstance.delete(`/api/documents/${id}`);
             setDocuments(prev => prev.filter(d => d.id !== id));
         } catch (err) {
             console.error('Failed to delete document:', err);
+            notifyError('Failed to delete document.');
         }
     };
 
@@ -142,9 +151,7 @@ export default function DocumentUploadPage() {
                 onClick={handleClickArea}
             >
                 <div className="text-center pointer-events-none">
-                    <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <UploadCloud className="w-8 h-8" />
-                    </div>
+                    <UploadCloud className="w-10 h-10 text-primary-600 dark:text-primary-400 mx-auto mb-4" />
                     <h3 className="text-lg font-bold text-neutral-900 dark:text-slate-100">Upload Document</h3>
                     <p className="text-sm text-neutral-600 dark:text-slate-400 mt-1 mb-4">
                         Drag and drop a PDF or image here, or click to browse.
@@ -157,7 +164,7 @@ export default function DocumentUploadPage() {
                             <select
                                 value={documentType}
                                 onChange={e => setDocumentType(e.target.value)}
-                                className="w-64 px-3 py-2 bg-white dark:bg-slate-700 border border-neutral-300 dark:border-slate-600 rounded-lg text-sm text-neutral-700 dark:text-slate-200 focus:outline-none focus:border-primary-500"
+                                className="w-64 px-3 py-2 bg-white dark:bg-slate-700 border border-neutral-300 dark:border-slate-600 rounded-6 text-sm text-neutral-700 dark:text-slate-200 focus:outline-none focus:border-primary-500"
                             >
                                 {DOCUMENT_TYPES.map(t => (
                                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -174,21 +181,21 @@ export default function DocumentUploadPage() {
                             className="hidden"
                             ref={fileInputRef}
                         />
-                        <span className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 border border-neutral-300 dark:border-slate-600 rounded-lg shadow-sm text-sm font-semibold text-neutral-700 dark:text-slate-200 hover:bg-neutral-50 dark:hover:bg-slate-600 transition-colors">
+                        <span className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 border border-neutral-300 dark:border-slate-600 rounded-6 shadow-sm text-sm font-semibold text-neutral-700 dark:text-slate-200 hover:bg-neutral-50 dark:hover:bg-slate-600 transition-colors">
                             Select File
                         </span>
                     </div>
 
                     {file && (
                         <div
-                            className="max-w-md mx-auto bg-white dark:bg-slate-900 p-4 rounded-lg shadow-sm border border-neutral-200 dark:border-slate-700 flex items-center justify-between pointer-events-auto"
+                            className="max-w-md mx-auto bg-white dark:bg-slate-900 p-4 rounded-8 shadow-sm border border-neutral-200 dark:border-slate-700 flex items-center justify-between pointer-events-auto"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center gap-3 overflow-hidden">
-                                <File className="w-6 h-6 text-indigo-500 shrink-0" />
+                                <File className="w-6 h-6 text-primary-500 shrink-0" />
                                 <div className="truncate text-left">
                                     <p className="text-sm font-medium text-neutral-900 dark:text-slate-200 truncate">{file.name}</p>
-                                    <p className="text-xs text-neutral-500">{(file.size / 1024 / 1024).toFixed(2)} MB · {selectedType.label}</p>
+                                    <p className="text-xs text-neutral-500 dark:text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB · {selectedType.label}</p>
                                 </div>
                             </div>
                             <Button variant="primary" size="sm" onClick={handleUpload} disabled={uploading}>
@@ -199,7 +206,7 @@ export default function DocumentUploadPage() {
 
                     {/* SSE Progress Log — shown as soon as events arrive */}
                     {progressEvents.length > 0 && (
-                        <div className="max-w-md mx-auto mt-4 text-left bg-neutral-900 rounded-lg p-4 font-mono text-xs text-green-400 border border-neutral-700 shadow-inner h-32 overflow-y-auto flex flex-col">
+                        <div className="max-w-md mx-auto mt-4 text-left bg-neutral-900 rounded-8 p-4 font-mono text-xs text-success-500 border border-neutral-700 shadow-inner h-32 overflow-y-auto flex flex-col">
                             {progressEvents.map((msg, idx) => (
                                 <div key={idx} className="mb-1 animate-fade-in">&gt; {msg}</div>
                             ))}
@@ -208,13 +215,13 @@ export default function DocumentUploadPage() {
                     )}
 
                     {status === 'success' && (
-                        <div className="mt-4 flex items-center justify-center gap-2 text-emerald-600">
+                        <div className="mt-4 flex items-center justify-center gap-2 text-success-600 dark:text-success-500">
                             <CheckCircle className="w-5 h-5" />
                             <span className="text-sm font-medium">Document successfully uploaded and processed!</span>
                         </div>
                     )}
                     {status === 'error' && (
-                        <div className="mt-4 flex items-center justify-center gap-2 text-red-600">
+                        <div className="mt-4 flex items-center justify-center gap-2 text-danger-600 dark:text-danger-500">
                             <AlertCircle className="w-5 h-5" />
                             <span className="text-sm font-medium">Upload failed. Make sure document-service is running.</span>
                         </div>
@@ -226,7 +233,7 @@ export default function DocumentUploadPage() {
             <div>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-neutral-900 dark:text-slate-100">Uploaded Documents</h2>
-                    <button onClick={() => fetchDocuments(activeFilter === 'All' ? null : activeFilter)} className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-primary-600 transition-colors">
+                    <button onClick={() => fetchDocuments(activeFilter === 'All' ? null : activeFilter)} className="flex items-center gap-1.5 text-sm text-neutral-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
                         <RefreshCw className="w-3.5 h-3.5" /> Refresh
                     </button>
                 </div>
@@ -249,33 +256,29 @@ export default function DocumentUploadPage() {
                 </div>
 
                 {docsLoading ? (
-                    <div className="text-center text-neutral-400 py-8">Loading documents...</div>
+                    <div className="text-center text-neutral-400 dark:text-slate-500 py-8">Loading documents...</div>
                 ) : documents.length === 0 ? (
-                    <div className="text-center text-neutral-400 dark:text-slate-500 py-10 border-2 border-dashed border-neutral-200 dark:border-slate-700 rounded-xl">
-                        <Folder className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                        <p className="text-sm">No documents found{activeFilter !== 'All' ? ` in "${activeFilter}"` : ''}.</p>
-                    </div>
+                    <EmptyState
+                        icon={Folder}
+                        title="No documents found"
+                        description={activeFilter !== 'All' ? `No documents in "${activeFilter}".` : 'Upload a document to get started.'}
+                        className="border-2 border-dashed border-neutral-200 dark:border-slate-700 rounded-8"
+                    />
                 ) : (
                     <div className="space-y-2">
                         {documents.map(doc => {
                             const TypeIcon = DOCUMENT_TYPES.find(t => t.category === doc.category)?.icon || FileText;
                             return (
-                                <div key={doc.id} className="flex items-center gap-4 p-4 bg-white dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 rounded-xl hover:border-primary-300 transition-colors">
-                                    <div className="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center shrink-0">
-                                        <TypeIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                                    </div>
+                                <div key={doc.id} className="flex items-center gap-4 p-4 bg-white dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 rounded-8 hover:border-primary-300 transition-colors">
+                                    <TypeIcon className="w-5 h-5 text-primary-600 dark:text-primary-400 shrink-0" />
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-semibold text-neutral-900 dark:text-slate-200 truncate">{doc.fileName}</p>
                                         <p className="text-xs text-neutral-500 dark:text-slate-400 mt-0.5">
                                             {doc.category} · {doc.fileSize ? `${(doc.fileSize / 1024).toFixed(0)} KB` : 'Unknown size'} · {doc.status}
                                         </p>
                                     </div>
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                        doc.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                                    }`}>
-                                        {doc.status}
-                                    </span>
-                                    <button onClick={() => handleDelete(doc.id)} className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                    <StatusBadge status={doc.status === 'COMPLETED' ? 'success' : 'warning'} label={doc.status} />
+                                    <button onClick={() => handleDelete(doc.id)} className="p-1.5 text-neutral-400 hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-500/10 rounded-6 transition-colors">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>

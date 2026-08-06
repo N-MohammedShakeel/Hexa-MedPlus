@@ -4,12 +4,13 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchPatientNotes, createPatientNote, updateNoteComment } from "../../../store/slices/encounterSlice";
 import axiosInstance from "../../../config/axios";
 import Button from "../../../components/ui/Button";
+import { notifyError } from "../../../common/utils/toast";
 
 const NOTE_TAGS = [
-  { id: 'PRESCRIPTION',   label: 'Prescription',   icon: Pill,          color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' },
-  { id: 'CLINICAL_NOTE',  label: 'Clinical Note',  icon: FileText,      color: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' },
-  { id: 'HISTORY',        label: 'History',         icon: History,       color: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800' },
-  { id: 'COMMENT',        label: 'Comment',         icon: MessageSquare, color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800' },
+  { id: 'PRESCRIPTION',   label: 'Prescription',   icon: Pill,          color: 'bg-info-50 text-info-600 border-info-200 dark:bg-info-500/10 dark:text-info-500 dark:border-info-500/30' },
+  { id: 'CLINICAL_NOTE',  label: 'Clinical Note',  icon: FileText,      color: 'bg-success-50 text-success-600 border-success-200 dark:bg-success-500/10 dark:text-success-500 dark:border-success-500/30' },
+  { id: 'HISTORY',        label: 'History',         icon: History,       color: 'bg-primary-50 text-primary-600 border-primary-200 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-800' },
+  { id: 'COMMENT',        label: 'Comment',         icon: MessageSquare, color: 'bg-warning-50 text-warning-500 border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/30' },
 ];
 
 const NOTE_STATUSES = [
@@ -52,6 +53,7 @@ export default function PatientNotesDrawer({ patient, onClose }) {
       setNewNote({ content: '', status: 'Active' });
     } catch (e) {
       console.error(e);
+      notifyError('Failed to add note.');
     } finally {
       setSaving(false);
     }
@@ -60,9 +62,10 @@ export default function PatientNotesDrawer({ patient, onClose }) {
   const handleStatusChange = async (noteId, newStatus) => {
     try {
       await axiosInstance.put(`/api/clinical/patients/${patient.mrn}/notes/${noteId}`, { status: newStatus });
-      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, status: newStatus } : n));
+      await dispatch(fetchPatientNotes(patient.mrn));
     } catch (e) {
       console.error('Failed to update note status', e);
+      notifyError('Failed to update note status.');
     }
   };
 
@@ -128,13 +131,13 @@ export default function PatientNotesDrawer({ patient, onClose }) {
             onChange={e => setNewNote(p => ({ ...p, content: e.target.value }))}
             placeholder={`Enter ${tagDef(activeTag).label.toLowerCase()} details...`}
             rows={3}
-            className="w-full p-2.5 text-sm bg-white dark:bg-slate-900 border border-neutral-300 dark:border-slate-600 rounded-lg text-neutral-800 dark:text-slate-200 placeholder-neutral-400 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none"
+            className="w-full p-2.5 text-sm bg-white dark:bg-slate-900 border border-neutral-300 dark:border-slate-600 rounded-8 text-neutral-800 dark:text-slate-200 placeholder-neutral-400 focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none"
           />
           <div className="flex items-center gap-2">
             <select
               value={newNote.status}
               onChange={e => setNewNote(p => ({ ...p, status: e.target.value }))}
-              className="flex-1 text-xs px-2 py-1.5 bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-600 rounded-md text-neutral-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="flex-1 text-xs px-2 py-1.5 bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-600 rounded-6 text-neutral-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               {NOTE_STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
@@ -159,7 +162,7 @@ export default function PatientNotesDrawer({ patient, onClose }) {
               const Icon = def.icon;
               const isExpanded = expandedNote === note.id;
               return (
-                <div key={note.id} className={`rounded-lg border ${def.color} p-3 space-y-2`}>
+                <div key={note.id} className={`rounded-8 border ${def.color} p-3 space-y-2`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-1.5">
                       <Icon className="w-3.5 h-3.5 flex-shrink-0" />
@@ -187,7 +190,7 @@ export default function PatientNotesDrawer({ patient, onClose }) {
                       {NOTE_STATUSES.map(s => <option key={s}>{s}</option>)}
                     </select>
                     {note.status === 'Resolved' || note.status === 'Past (Cured)' ? (
-                      <Check className="w-3 h-3 text-green-600 ml-auto" />
+                      <Check className="w-3 h-3 text-success-500 ml-auto" />
                     ) : null}
                   </div>
                 </div>

@@ -4,6 +4,7 @@ import Button from "../../../components/ui/Button";
 import { Activity } from "lucide-react";
 import { useDispatch } from "react-redux";
 import { createEncounter, updateEncounterVitals } from "../../../store/slices/encounterSlice";
+import { notifyError } from "../../../common/utils/toast";
 
 export default function EncounterVitalsTab({
     latestEncounter, isLocked, patientId, refetchEncounters
@@ -30,6 +31,7 @@ export default function EncounterVitalsTab({
             setVitalsForm({ bloodPressure: '', heartRate: '', o2Sat: '', temperature: '' });
         } catch (err) {
             console.error('Failed to save vitals', err);
+            notifyError('Failed to save vitals.');
         } finally {
             setIsSavingVitals(false);
         }
@@ -46,8 +48,8 @@ export default function EncounterVitalsTab({
                     { label: "Temp", value: latestEncounter?.temperature || "N/A", unit: latestEncounter?.temperature ? " °F" : "", flag: "normal" },
                 ].map((v, i) => (
                     <Card key={i} padding="md">
-                        <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">{v.label}</p>
-                        <p className={`text-2xl font-bold ${v.flag === "high" ? "text-danger-600" : v.flag === "none" ? "text-neutral-400" : "text-neutral-900"}`}>
+                        <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">{v.label}</p>
+                        <p className={`text-2xl font-bold ${v.flag === "high" ? "text-danger-600 dark:text-danger-500" : v.flag === "none" ? "text-neutral-400 dark:text-neutral-600" : "text-neutral-900 dark:text-neutral-100"}`}>
                             {v.value}{v.unit}
                         </p>
                     </Card>
@@ -56,8 +58,8 @@ export default function EncounterVitalsTab({
 
             {/* Entry Form — only when not locked */}
             {!isLocked && (
-                <Card padding="md" className="border-primary-200 bg-primary-50/10">
-                    <h4 className="text-sm font-bold text-primary-800 mb-3">Update Vitals</h4>
+                <Card padding="md" className="border-primary-200 dark:border-primary-800 bg-primary-50/10 dark:bg-primary-900/5">
+                    <h4 className="text-sm font-bold text-primary-700 dark:text-primary-400 mb-3">Update Vitals</h4>
                     <div className="grid grid-cols-2 gap-3">
                         {[
                             { key: 'bloodPressure', label: 'Blood Pressure', placeholder: 'e.g. 120/80', unit: 'mmHg' },
@@ -66,7 +68,7 @@ export default function EncounterVitalsTab({
                             { key: 'temperature',   label: 'Temperature',    placeholder: 'e.g. 98.6',   unit: '°F' },
                         ].map(field => (
                             <div key={field.key}>
-                                <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                                     {field.label} <span className="font-normal text-neutral-400">({field.unit})</span>
                                 </label>
                                 <input
@@ -74,7 +76,7 @@ export default function EncounterVitalsTab({
                                     value={vitalsForm[field.key]}
                                     onChange={e => setVitalsForm(v => ({ ...v, [field.key]: e.target.value }))}
                                     placeholder={field.placeholder}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-400 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20"
+                                    className="w-full px-3 py-2 text-sm bg-white dark:bg-neutral-800 border border-neutral-400 dark:border-neutral-700 rounded-6 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20 text-neutral-900 dark:text-neutral-200"
                                 />
                             </div>
                         ))}

@@ -8,13 +8,16 @@ import {
 } from "../../../store/slices/patientSlice";
 import Card from "../../../components/ui/Card";
 import Input from "../../../components/ui/Input";
+import EmptyState from "../../../components/ui/EmptyState";
 import { Search, ArchiveRestore, Loader2, FileText } from "lucide-react";
 import { logPatientUnarchived } from "../../../services/api/auditService";
+import { useConfirm } from "../../../contexts/ConfirmContext";
 
 const PAGE_SIZE = 10;
 
 export default function RecordsPage() {
   const dispatch = useDispatch();
+  const confirm = useConfirm();
   const archivedPatients = useSelector(selectArchivedPatients);
   const status = useSelector(selectArchivedPatientStatus);
   const [searchTerm, setSearchTerm] = useState("");
@@ -37,10 +40,14 @@ export default function RecordsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const handleUnarchive = (patient) => {
-    if (window.confirm(`Unarchive ${patient.name}? They will reappear in the active Patient Management workspace with their full history intact.`)) {
-      dispatch(unarchivePatient(patient.id));
+  const handleUnarchive = async (patient) => {
+    const ok = await confirm(`Unarchive ${patient.name}? They will reappear in the active Patient Management workspace with their full history intact.`);
+    if (!ok) return;
+    try {
+      await dispatch(unarchivePatient(patient.id));
       logPatientUnarchived(patient.mrn, patient.name);
+    } catch (error) {
+      // Failure is already surfaced to the user via toast inside the unarchivePatient thunk.
     }
   };
 
@@ -70,7 +77,7 @@ export default function RecordsPage() {
         {status === "loading" ? (
           <div className="flex flex-col items-center justify-center p-12">
             <Loader2 className="w-8 h-8 animate-spin text-primary-500 mb-4" />
-            <p className="text-sm text-neutral-600">Loading archived patients...</p>
+            <p className="text-sm text-neutral-600 dark:text-slate-400">Loading archived patients...</p>
           </div>
         ) : (
           <>
@@ -110,7 +117,7 @@ export default function RecordsPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => handleUnarchive(patient)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-4 border text-[11px] font-semibold border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-4 border text-[11px] font-semibold border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors"
                           title="Unarchive this patient"
                         >
                           <ArchiveRestore className="w-3.5 h-3.5" />
@@ -120,9 +127,12 @@ export default function RecordsPage() {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan="6" className="px-4 py-10 text-center text-sm text-neutral-500 dark:text-slate-400">
-                        <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                        No archived patients found.
+                      <td colSpan="6" className="px-0">
+                        <EmptyState
+                          icon={FileText}
+                          title="No archived patients found"
+                          description={searchTerm ? "Try adjusting your search term." : "Patients that are archived will appear here."}
+                        />
                       </td>
                     </tr>
                   )}

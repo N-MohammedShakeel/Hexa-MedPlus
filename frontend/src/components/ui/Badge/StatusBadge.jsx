@@ -1,43 +1,25 @@
 import React from "react";
 import { cn } from "../../../common/utils/cn";
-import { CheckCircle, AlertTriangle, Clock, AlertCircle } from "lucide-react";
 
 const statusConfig = {
-  success: {
-    className: "bg-success-50 dark:bg-success-900/30 text-success-500 dark:text-success-400",
-    Icon: CheckCircle,
-  },
-  warning: {
-    className: "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400",
-    Icon: AlertTriangle,
-  },
-  danger: {
-    className: "bg-danger-50 dark:bg-danger-900/30 text-danger-500 dark:text-danger-400",
-    Icon: AlertCircle,
-  },
-  info: {
-    className: "bg-info-50 dark:bg-info-900/30 text-info-500 dark:text-info-400",
-    Icon: Clock,
-  },
-  neutral: {
-    className: "bg-neutral-300 dark:bg-slate-700 text-neutral-800 dark:text-slate-300",
-    Icon: Clock,
-  },
+  success: "bg-success-500",
+  warning: "bg-warning-500",
+  danger: "bg-danger-500",
+  info: "bg-info-500",
+  neutral: "bg-neutral-400 dark:bg-neutral-600",
 };
 
 export default function StatusBadge({ status, label, className }) {
-  const config = statusConfig[status] || statusConfig.neutral;
-  const { className: badgeClasses, Icon } = config;
+  const dotClass = statusConfig[status] || statusConfig.neutral;
 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-2 text-xs font-medium",
-        badgeClasses,
+        "inline-flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300",
         className,
       )}
     >
-      <Icon className="w-3 h-3" />
+      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", dotClass)} />
       {label}
     </span>
   );

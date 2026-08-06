@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { selectAllPatients, fetchPatients, selectPatientStatus } from '../../../store/slices/patientSlice';
-import Card from '../../../components/ui/Card';
-import { Button, Input } from '../../../components/ui';
-import { Upload, FileText, Image as ImageIcon, FileSpreadsheet, CheckCircle, Clock, AlertCircle, Loader2, Download, AlertTriangle, Terminal, Trash2, X } from 'lucide-react';
-import StatusBadge from '../../../components/ui/Badge';
 import { clinicalService } from '../../../services/api/clinicalService';
 import axiosInstance from '../../../config/axios';
 import DocumentFilters from '../components/DocumentFilters';
@@ -12,6 +8,8 @@ import DocumentUploadZone from '../components/DocumentUploadZone';
 import DocumentListTable from '../components/DocumentListTable';
 import BlurAnnotationModal from '../components/BlurAnnotationModal';
 import DocumentViewModal from '../components/DocumentViewModal';
+import { useConfirm } from '../../../contexts/ConfirmContext';
+import { notifyError } from '../../../common/utils/toast';
 
 export default function DocumentWorkspacePage() {
   const dispatch = useDispatch();
@@ -26,11 +24,11 @@ export default function DocumentWorkspacePage() {
   
   // Object URL mapping for fetched blobs
   const [docBlobUrl, setDocBlobUrl] = useState(null);
-  const [customDocName, setCustomDocName] = useState('');
   // analyzingStates: { [aiResultId]: { isAnalyzing: bool, inputs: [] } }
   const [analyzingStates, setAnalyzingStates] = useState({});
   // reanalyzingFileKeys: set of fileKeys currently being reanalyzed (for document list spinner)
   const [reanalyzingFileKeys, setReanalyzingFileKeys] = useState(new Set());
+  const confirm = useConfirm();
   // Ref so polling closure can always read current reanalyzingFileKeys
   const reanalyzingRef = React.useRef(reanalyzingFileKeys);
   React.useEffect(() => { reanalyzingRef.current = reanalyzingFileKeys; }, [reanalyzingFileKeys]);
@@ -165,6 +163,7 @@ export default function DocumentWorkspacePage() {
         })));
       } catch (error) {
         console.error("Failed to fetch documents:", error);
+        notifyError('Failed to load documents.');
       } finally {
         setLoading(false);
       }
@@ -173,20 +172,25 @@ export default function DocumentWorkspacePage() {
   }, []);
 
   const refreshDocuments = async () => {
-    const data = await clinicalService.getDocuments();
-    setDocuments(data.map(doc => ({
-      id: doc.id,
-      name: doc.fileName,
-      fileKey: doc.fileKey,
-      type: doc.documentType,
-      size: doc.fileSize ? (doc.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown',
-      status: doc.status,
-      statusColor: doc.status === 'COMPLETED' ? 'success' : doc.status === 'FAILED' ? 'danger' : 'info',
-      category: doc.category,
-      date: new Date(doc.uploadedAt).toISOString().split('T')[0],
-      mrn: doc.targetMrn,
-      aiVerified: false
-    })));
+    try {
+      const data = await clinicalService.getDocuments();
+      setDocuments(data.map(doc => ({
+        id: doc.id,
+        name: doc.fileName,
+        fileKey: doc.fileKey,
+        type: doc.documentType,
+        size: doc.fileSize ? (doc.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown',
+        status: doc.status,
+        statusColor: doc.status === 'COMPLETED' ? 'success' : doc.status === 'FAILED' ? 'danger' : 'info',
+        category: doc.category,
+        date: new Date(doc.uploadedAt).toISOString().split('T')[0],
+        mrn: doc.targetMrn,
+        patientGender: doc.patientGender || '',
+        aiVerified: false
+      })));
+    } catch (error) {
+      console.error("Failed to refresh documents:", error);
+    }
   };
 
   // Auto-refresh document list if any document is processing or blur_detected
@@ -202,23 +206,23 @@ export default function DocumentWorkspacePage() {
   }, [documents]);
 
   const handleDelete = async (docId) => {
-    if (window.confirm('Are you sure you want to delete this document?')) {
-      try {
-        const docToDelete = documents.find(d => d.id === docId);
-        await axiosInstance.delete(`/api/documents/${docId}`);
-        // Cascade delete the corresponding vision AI record
-        if (docToDelete?.fileKey) {
-          try {
-            await axiosInstance.delete(`/api/ai/vision/results/by-file-key/${encodeURIComponent(docToDelete.fileKey)}`);
-          } catch (e) {
-            console.warn('Could not cascade delete vision record', e);
-          }
+    const ok = await confirm('Are you sure you want to delete this document?');
+    if (!ok) return;
+    try {
+      const docToDelete = documents.find(d => d.id === docId);
+      await axiosInstance.delete(`/api/documents/${docId}`);
+      // Cascade delete the corresponding vision AI record
+      if (docToDelete?.fileKey) {
+        try {
+          await axiosInstance.delete(`/api/ai/vision/results/by-file-key/${encodeURIComponent(docToDelete.fileKey)}`);
+        } catch (e) {
+          console.warn('Could not cascade delete vision record', e);
         }
-        refreshDocuments();
-      } catch (err) {
-        console.error('Failed to delete document', err);
-        alert('Failed to delete document');
       }
+      refreshDocuments();
+    } catch (err) {
+      console.error('Failed to delete document', err);
+      notifyError('Failed to delete document.');
     }
   };
 
@@ -236,7 +240,7 @@ export default function DocumentWorkspacePage() {
       <DocumentFilters 
         selectedCategory={selectedCategory} 
         setSelectedCategory={setSelectedCategory} 
-        onUploadClick={() => document.getElementById('fileInput').click()} 
+        onUploadClick={() => document.getElementById('docWorkspaceFileInput')?.click()}
       />
 
       {/* Main Workspace */}
