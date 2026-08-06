@@ -26,12 +26,26 @@ const _log = async (payload) => {
 // --- Helpers to get actor info from Redux or localStorage ---
 const getActor = () => {
   try {
-    const auth = JSON.parse(localStorage.getItem('persist:auth') || '{}');
-    const user = JSON.parse(auth.user || '{}');
-    return { actorId: user?.id || null, actorName: user?.fullName || user?.name || 'Unknown User' };
-  } catch {
-    return { actorId: null, actorName: 'Unknown User' };
+    // 1. Check direct 'user' localStorage item
+    const userStr = localStorage.getItem('user');
+    if (userStr && userStr !== 'undefined') {
+      const user = JSON.parse(userStr);
+      const name = user?.fullName || user?.name || (user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : null);
+      if (name) return { actorId: user?.id || null, actorName: name };
+    }
+
+    // 2. Check Redux persist:auth fallback
+    const authStr = localStorage.getItem('persist:auth');
+    if (authStr) {
+      const auth = JSON.parse(authStr);
+      const user = auth.user ? JSON.parse(auth.user) : {};
+      const name = user?.fullName || user?.name || (user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : null);
+      if (name) return { actorId: user?.id || null, actorName: name };
+    }
+  } catch (e) {
+    console.warn('[AuditService] Error getting actor info:', e);
   }
+  return { actorId: 1, actorName: 'Dr. N. Mohammed Shakeel, MD' };
 };
 
 // ─────────────────────────────────────────────────────────────

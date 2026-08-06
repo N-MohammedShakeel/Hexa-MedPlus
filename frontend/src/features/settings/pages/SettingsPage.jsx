@@ -393,7 +393,8 @@ function AppearanceSettings() {
 }
 
 function AiPreferencesSettings() {
-  const [model, setModel] = useState("auto");
+  const [llmModel, setLlmModel] = useState("nvidia");
+  const [visionModel, setVisionModel] = useState("nvidia");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -401,7 +402,8 @@ function AiPreferencesSettings() {
     const fetchPreference = async () => {
       try {
         const data = await clinicalService.getAiPreferences();
-        setModel(data.model);
+        setLlmModel(data.llm_model || data.model || "nvidia");
+        setVisionModel(data.vision_model || "nvidia");
       } catch (e) {
         console.error(e);
       } finally {
@@ -414,10 +416,13 @@ function AiPreferencesSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await clinicalService.updateAiPreferences(model);
-      notifySuccess("AI Preference updated successfully!");
+      await clinicalService.updateAiPreferences({
+        llm_model: llmModel,
+        vision_model: visionModel,
+      });
+      notifySuccess("AI Model Preferences saved successfully!");
     } catch (e) {
-      notifyError("Failed to update AI preference.");
+      notifyError("Failed to update AI preferences.");
     } finally {
       setSaving(false);
     }
@@ -426,37 +431,93 @@ function AiPreferencesSettings() {
   if (loading) return <div className="text-sm text-neutral-600 dark:text-neutral-400">Loading...</div>;
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-xl font-semibold text-neutral-900 dark:text-white border-b border-neutral-500 dark:border-neutral-700 pb-4">
-        AI Preferences
-      </h3>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold text-neutral-800 dark:text-neutral-300 mb-3">
-            Preferred LLM Model
-          </label>
-          <div className="space-y-2">
-            {[
-              { id: "auto", label: "Auto / Fallback Mode (Default)" },
-              { id: "qwen", label: "Qwen 2.5 (Custom via Ngrok)" },
-              { id: "nvidia", label: "NVIDIA Llama 3.1" },
-            ].map((opt) => (
-              <label key={opt.id} className="flex items-center gap-3 p-3 border border-neutral-300 dark:border-neutral-700 rounded-6 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                <input
-                  type="radio"
-                  name="aimodel"
-                  value={opt.id}
-                  checked={model === opt.id}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-200">{opt.label}</span>
-              </label>
-            ))}
-          </div>
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-xl font-semibold text-neutral-900 dark:text-white border-b border-neutral-200 dark:border-neutral-700 pb-3">
+          AI Model Preferences
+        </h3>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+          Configure preferred AI models for Clinical Reasoning (LLM) and Document/Imaging OCR (Vision AI).
+        </p>
+      </div>
+
+      {/* 1. Clinical Reasoning LLM Model */}
+      <div className="space-y-3">
+        <label className="block text-xs font-bold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+          Clinical Reasoning & SOAP LLM Model
+        </label>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            { id: "nvidia", label: "Meta LLaMA 3.1 8B (Default)", desc: "Meta LLaMA 3.1 8B Instruct via NVIDIA NIM" },
+            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "amazon.nova-pro-v1:0 — Multimodal Flagship ($0.80/1M tokens)" },
+            { id: "llama_70b", label: "Meta LLaMA 3.3 70B Instruct (AWS Bedrock)", desc: "us.meta.llama3-3-70b-instruct-v1:0 — High-capacity clinical reasoning" },
+            { id: "claude_35_sonnet", label: "Anthropic Claude 3.5 Sonnet (AWS Bedrock)", desc: "us.anthropic.claude-3-5-sonnet-20241022-v2:0 — Gold standard medical precision" },
+            { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "amazon.nova-lite-v1:0 — Fast low-cost multimodal LLM" },
+            { id: "qwen", label: "Qwen 2.5 14B (Custom via Ngrok)", desc: "Local Qwen 2.5 14B model endpoint" },
+          ].map((opt) => (
+            <label
+              key={opt.id}
+              className={`flex items-start gap-3 p-3.5 border rounded-8 cursor-pointer transition-all ${
+                llmModel === opt.id
+                  ? "border-primary-500 bg-primary-50/50 dark:bg-primary-900/10 ring-1 ring-primary-500"
+                  : "border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              }`}
+            >
+              <input
+                type="radio"
+                name="llmModel"
+                value={opt.id}
+                checked={llmModel === opt.id}
+                onChange={(e) => setLlmModel(e.target.value)}
+                className="w-4 h-4 mt-0.5 text-primary-600 focus:ring-primary-500"
+              />
+              <div>
+                <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{opt.label}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{opt.desc}</p>
+              </div>
+            </label>
+          ))}
         </div>
       </div>
-      <div className="border-t border-neutral-500 dark:border-neutral-700 pt-6 flex justify-end">
+
+      {/* 2. Vision AI & OCR Model */}
+      <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+        <label className="block text-xs font-bold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+          Vision AI & Document OCR Model
+        </label>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            { id: "nvidia", label: "Meta LLaMA 3.2 90B Vision (Default)", desc: "Llama 3.2 90B Vision Instruct via NVIDIA NIM" },
+            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "amazon.nova-pro-v1:0 — Flagship multimodal document & imaging analysis" },
+            { id: "claude_35_sonnet", label: "Anthropic Claude 3.5 Sonnet (AWS Bedrock)", desc: "us.anthropic.claude-3-5-sonnet-20241022-v2:0 — Gold standard vision OCR" },
+            { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "amazon.nova-lite-v1:0 — Ultra low-cost OCR & imaging ($0.06/1M tokens)" },
+          ].map((opt) => (
+            <label
+              key={opt.id}
+              className={`flex items-start gap-3 p-3.5 border rounded-8 cursor-pointer transition-all ${
+                visionModel === opt.id
+                  ? "border-primary-500 bg-primary-50/50 dark:bg-primary-900/10 ring-1 ring-primary-500"
+                  : "border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              }`}
+            >
+              <input
+                type="radio"
+                name="visionModel"
+                value={opt.id}
+                checked={visionModel === opt.id}
+                onChange={(e) => setVisionModel(e.target.value)}
+                className="w-4 h-4 mt-0.5 text-primary-600 focus:ring-primary-500"
+              />
+              <div>
+                <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{opt.label}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{opt.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-6 flex justify-end">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save Preferences"}
         </Button>

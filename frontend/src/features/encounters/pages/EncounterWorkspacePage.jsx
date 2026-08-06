@@ -109,17 +109,20 @@ export default function EncounterWorkspacePage() {
         setEditingVisionRecord(rec);
     };
 
-    const handleSaveVisionEdit = async (id, updatedFindings) => {
+    const handleSaveVisionEdit = async (id, updatedData) => {
         try {
-            await apiClient.put(`/ai/vision/results/${id}`, { clinicalFindings: updatedFindings });
-            setVisionResults(prev => prev.map(r => r.id === id ? { ...r, clinicalFindings: updatedFindings } : r));
+            const payload = (typeof updatedData === 'object' && !Array.isArray(updatedData))
+                ? updatedData
+                : { clinicalFindings: updatedData };
+            await apiClient.put(`/ai/vision/results/${id}`, payload);
+            setVisionResults(prev => prev.map(r => r.id === id ? { ...r, ...payload } : r));
             if (selectedVisionDoc && selectedVisionDoc.id === id) {
-                setSelectedVisionDoc(prev => ({ ...prev, clinicalFindings: updatedFindings }));
+                setSelectedVisionDoc(prev => ({ ...prev, ...payload }));
             }
-            notifySuccess("Findings updated successfully.");
+            notifySuccess("Analysis updated successfully.");
         } catch (error) {
             console.error("Failed to update vision record:", error);
-            notifyError("Failed to save findings.");
+            notifyError("Failed to save changes.");
         }
     };
 
@@ -174,61 +177,80 @@ export default function EncounterWorkspacePage() {
             
             dispatch(setAiGenerating(targetEncounterId));
             
-            // Gather clinical notes text
-            let allNotesText = latestEncounter?.notes?.map(n => n.content).join("\n\n") || "";
+            // Gather clinical notes, labs, imaging, and vitals grouped strictly by episode
+            const boundaryDate = patient?.unarchivedAt ? new Date(patient.unarchivedAt) : null;
             
-            // Include global patient notes (like CLINICAL_NOTE, PRESCRIPTION, etc.) and their comments
-            if (patientNotes && patientNotes.length > 0) {
-                const boundaryDate = patient?.unarchivedAt ? new Date(patient.unarchivedAt) : null;
-                const currentNotes = boundaryDate ? patientNotes.filter(n => new Date(n.createdAt) >= boundaryDate) : patientNotes;
-                const pastNotes = boundaryDate ? patientNotes.filter(n => new Date(n.createdAt) < boundaryDate) : [];
-                
-                let pNotesText = "";
-                if (currentNotes.length > 0) {
-                    pNotesText += "--- CURRENT EPISODE OBSERVATIONS ---\n" + currentNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n\n");
-                }
-                if (pastNotes.length > 0) {
-                    const dateStr = boundaryDate ? boundaryDate.toLocaleDateString() : '';
-                    pNotesText += `\n\n--- PAST MEDICAL HISTORY (PREVIOUS EPISODE${dateStr ? ' BEFORE ' + dateStr : ''}) ---\n` + pastNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n\n");
-                }
-                
-                allNotesText = allNotesText ? allNotesText + "\n\n" + pNotesText.trim() : pNotesText.trim();
+            // 1. Separate patient notes into Current vs Past
+            const currentNotes = boundaryDate ? (patientNotes || []).filter(n => new Date(n.createdAt) >= boundaryDate) : (patientNotes || []);
+            const pastNotes = boundaryDate ? (patientNotes || []).filter(n => new Date(n.createdAt) < boundaryDate) : [];
+            
+            let promptSections = [];
+            
+            // CURRENT EPISODE NOTES
+            if (currentNotes.length > 0) {
+                const currentNotesStr = currentNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n\n");
+                promptSections.push(`--- CURRENT EPISODE OBSERVATIONS ---\n${currentNotesStr}`);
+            } else {
+                promptSections.push(`--- CURRENT EPISODE OBSERVATIONS ---\nNo new clinical notes written for current episode yet.`);
             }
 
-            // --- FIX: Serialize Lab Reports ---
-            const labVisionResults = visionResults.filter(r =>
-                r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType))
-            );
-            if (labVisionResults.length > 0) {
-                const labText = labVisionResults.map(r => {
+            // CURRENT LAB REPORTS (analyzed during current episode)
+            const currentLabs = boundaryDate 
+                ? (visionResults || []).filter(r => (r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType))) && new Date(r.analyzedAt || r.createdAt) >= boundaryDate)
+                : (visionResults || []).filter(r => r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType)));
+
+            if (currentLabs.length > 0) {
+                const labText = currentLabs.map(r => {
                     const heading = r.aiHeading || r.fileKey?.split('/').pop() || 'Lab Report';
-                    const date = r.analyzedAt ? new Date(r.analyzedAt).toLocaleDateString() : 'Unknown date';
                     const findings = r.clinicalFindings?.length > 0
                         ? r.clinicalFindings.map(f => `  ${f.finding || f.test_name}: ${f.result} ${f.unit || ''} ${f.flag ? `[${f.flag}]` : ''} (Ref: ${f.reference_range || 'N/A'})`).join('\n')
                         : (r.extractedText || 'No structured findings');
-                    return `LAB: ${heading} (${date})\n${findings}`;
+                    return `LAB: ${heading}\n${findings}`;
                 }).join('\n\n');
-                allNotesText += `\n\n--- LAB REPORTS ---\n${labText}`;
+                promptSections.push(`--- CURRENT LAB REPORTS ---\n${labText}`);
             }
 
-            // --- FIX: Serialize Imaging Summaries ---
-            const imagingVisionResults = visionResults.filter(r =>
-                ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType)
-            );
-            if (imagingVisionResults.length > 0) {
-                const imagingText = imagingVisionResults.map(r => {
+            // CURRENT IMAGING STUDIES (analyzed during current episode)
+            const currentImaging = boundaryDate 
+                ? (visionResults || []).filter(r => ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType) && new Date(r.analyzedAt || r.createdAt) >= boundaryDate)
+                : (visionResults || []).filter(r => ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType));
+
+            if (currentImaging.length > 0) {
+                const imagingText = currentImaging.map(r => {
                     const heading = r.aiHeading || r.fileKey?.split('/').pop() || 'Imaging Study';
-                    const date = r.analyzedAt ? new Date(r.analyzedAt).toLocaleDateString() : 'Unknown date';
-                    return `IMAGING: ${heading} (${date})\n${r.reportSummary || r.extractedText || 'No summary available'}`;
+                    return `IMAGING: ${heading}\n${r.reportSummary || r.extractedText || 'No summary available'}`;
                 }).join('\n\n');
-                allNotesText += `\n\n--- IMAGING STUDIES ---\n${imagingText}`;
+                promptSections.push(`--- CURRENT IMAGING STUDIES ---\n${imagingText}`);
             }
 
-            // --- FIX: Include current vitals ---
+            // CURRENT VITALS
             if (latestEncounter?.vitals) {
                 const v = latestEncounter.vitals;
-                allNotesText += `\n\n--- CURRENT VITALS ---\nBP: ${v.bloodPressure || 'N/A'}, HR: ${v.heartRate || 'N/A'} bpm, O2 Sat: ${v.o2Sat || 'N/A'}%, Temp: ${v.temperature || 'N/A'}°F`;
+                promptSections.push(`--- CURRENT VITALS ---\nBP: ${v.bloodPressure || 'N/A'}, HR: ${v.heartRate || 'N/A'} bpm, O2 Sat: ${v.o2Sat || 'N/A'}%, Temp: ${v.temperature || 'N/A'}°F`);
             }
+
+            // PAST MEDICAL HISTORY (HISTORICAL CONTEXT ONLY - PREVIOUS EPISODE)
+            let pastHistoryStr = "";
+            if (pastNotes.length > 0) {
+                pastHistoryStr += pastNotes.map(n => `[${n.tag === 'CUSTOM' ? n.customTag : n.tag}] ${n.content} ${n.comment ? `(Doctor Comment: ${n.comment})` : ''}`).join("\n");
+            }
+
+            const pastLabs = boundaryDate ? (visionResults || []).filter(r => (r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType))) && new Date(r.analyzedAt || r.createdAt) < boundaryDate) : [];
+            if (pastLabs.length > 0) {
+                pastHistoryStr += "\n[Historical Lab Reports]\n" + pastLabs.map(r => `${r.aiHeading || 'Lab'}: ${r.reportSummary || 'Historical lab record'}`).join("\n");
+            }
+
+            const pastImaging = boundaryDate ? (visionResults || []).filter(r => ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType) && new Date(r.analyzedAt || r.createdAt) < boundaryDate) : [];
+            if (pastImaging.length > 0) {
+                pastHistoryStr += "\n[Historical Imaging Studies]\n" + pastImaging.map(r => `${r.aiHeading || 'Imaging'}: ${r.reportSummary || 'Historical scan'}`).join("\n");
+            }
+
+            if (pastHistoryStr.trim()) {
+                const dateStr = boundaryDate ? boundaryDate.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '';
+                promptSections.push(`--- PAST MEDICAL HISTORY (HISTORICAL CONTEXT ONLY - PREVIOUS EPISODE BEFORE ${dateStr}) ---\nCRITICAL INSTRUCTION FOR AI: The following records belong strictly to a PREVIOUS care episode. Treat as resolved/historical background context ONLY. Do NOT use past symptoms (e.g. headaches, hypertension) or past imaging findings as current active diagnoses unless explicitly noted in CURRENT EPISODE OBSERVATIONS above.\n\n${pastHistoryStr.trim()}`);
+            }
+
+            const allNotesText = promptSections.join("\n\n");
             
             // Prepare patient context
             const patientContext = `${patient.firstName} ${patient.lastName}, ${patient.dob}, ${patient.gender}. MRN: ${patient.mrn}`;

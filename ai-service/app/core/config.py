@@ -13,7 +13,12 @@ class Settings(BaseSettings):
     CUSTOM_LLM_BASE_URL: str = ""
     TAVILY_API_KEY: str = ""
 
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_DEFAULT_REGION: str = "ap-south-1"
+
     class Config:
         env_file = "../.env"
+        extra = "ignore"
 
 settings = Settings()

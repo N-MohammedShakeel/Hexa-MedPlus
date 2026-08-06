@@ -72,9 +72,10 @@ export const clinicalService = {
     }
   },
   
-  updateAiPreferences: async (model) => {
+  updateAiPreferences: async (payload) => {
     try {
-      const response = await apiClient.put('/ai/preferences', { model });
+      const body = typeof payload === 'string' ? { model: payload } : payload;
+      const response = await apiClient.put('/ai/preferences', body);
       return response.data;
     } catch (error) {
       console.error("Error updating AI preferences:", error);

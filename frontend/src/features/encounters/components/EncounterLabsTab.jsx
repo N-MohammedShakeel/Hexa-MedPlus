@@ -15,7 +15,7 @@ function TimeBoundaryDivider({ date, label }) {
             <div className="flex items-center gap-1.5 px-3 py-1 bg-warning-50 dark:bg-warning-500/10 border border-warning-200 dark:border-warning-500/30 rounded-full">
                 <History className="w-3 h-3 text-warning-500" />
                 <span className="text-[11px] font-bold text-warning-500 uppercase tracking-wide">{label}</span>
-                {date && <span className="text-[10px] text-warning-500/80 ml-1">· before {new Date(date).toLocaleDateString()}</span>}
+                {date && <span className="text-[10px] text-warning-500/80 ml-1">· before {new Date(date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>}
             </div>
             <div className="flex-1 h-px bg-warning-200 dark:bg-warning-900/40" />
         </div>

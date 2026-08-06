@@ -13,7 +13,7 @@ from tavily import TavilyClient
 from app.core.rag import search_clinical_protocols
 
 def get_llm():
-    pref = state.GLOBAL_AI_PREFERENCE
+    pref = state.GLOBAL_LLM_PREFERENCE
 
     def get_custom():
         log_info(f"🤖 AI ROUTING: Executing with Qwen 2.5 (Custom Ngrok) - Preference: {pref}")
@@ -25,16 +25,63 @@ def get_llm():
         from langchain_nvidia_ai_endpoints import ChatNVIDIA
         return ChatNVIDIA(model="meta/llama-3.1-8b-instruct", api_key=settings.NVIDIA_NIM_API_KEY, temperature=0.2, max_tokens=1500)
 
-    if pref == "qwen" and settings.CUSTOM_LLM_BASE_URL:
+    def get_aws_bedrock(model_id: str, label: str):
+        log_info(f"🤖 AI ROUTING: Executing with AWS Bedrock {label} ({model_id})")
+        from langchain_core.runnables import Runnable
+        from langchain_core.messages import AIMessage
+
+        class BedrockLLM(Runnable):
+            def __init__(self, target_model_id):
+                import os
+                self.model_id = target_model_id
+                self.key_id = settings.AWS_ACCESS_KEY_ID or os.getenv("AWS_ACCESS_KEY_ID")
+                self.secret_key = settings.AWS_SECRET_ACCESS_KEY or os.getenv("AWS_SECRET_ACCESS_KEY")
+                self.region_name = settings.AWS_DEFAULT_REGION or os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+
+            def invoke(self, input, config=None):
+                import boto3
+                import os
+                
+                if not self.key_id or not self.secret_key:
+                    log_warn("AWS credentials missing in settings. Falling back to NVIDIA Llama 3.1...")
+                    return get_nvidia().invoke(input, config=config)
+
+                client = boto3.client(
+                    'bedrock-runtime',
+                    aws_access_key_id=self.key_id,
+                    aws_secret_access_key=self.secret_key,
+                    region_name=self.region_name
+                )
+                prompt_text = str(input.to_string()) if hasattr(input, 'to_string') else (getattr(input, 'content', str(input)))
+                
+                response = client.converse(
+                    modelId=self.model_id,
+                    messages=[{
+                        'role': 'user',
+                        'content': [{'text': prompt_text}]
+                    }],
+                    inferenceConfig={'temperature': 0.2, 'maxTokens': 2000}
+                )
+                output_text = response['output']['message']['content'][0]['text']
+                return AIMessage(content=output_text)
+
+        return BedrockLLM(model_id)
+
+    if pref == "aws_nova_pro":
+        return get_aws_bedrock("apac.amazon.nova-pro-v1:0", "Amazon Nova Pro")
+    elif pref == "claude_35_sonnet":
+        return get_aws_bedrock("apac.anthropic.claude-3-5-sonnet-20241022-v2:0", "Claude 3.5 Sonnet")
+    elif pref == "llama_70b":
+        return get_aws_bedrock("meta.llama3-70b-instruct-v1:0", "Meta LLaMA 70B Instruct")
+    elif pref == "aws_nova":
+        return get_aws_bedrock("apac.amazon.nova-lite-v1:0", "Amazon Nova Lite")
+    elif pref == "qwen" and settings.CUSTOM_LLM_BASE_URL:
         return get_custom()
     elif pref == "nvidia" and settings.NVIDIA_NIM_API_KEY:
         return get_nvidia()
     
-    # Auto / Fallback: Qwen first, then NVIDIA
-    if settings.CUSTOM_LLM_BASE_URL:
-        return get_custom()
-    else:
-        return get_nvidia()
+    # Default fallback: NVIDIA Llama 3.1
+    return get_nvidia()
 
 def robust_json_invoke(prompt_template, llm, parser, input_dict, fallback_dict):
     """Executes prompt + llm and robustly extracts JSON, falling back cleanly if LLM generates preamble/malformed output."""
@@ -97,14 +144,21 @@ def summarization_node(state: AgentState):
     llm = get_llm()
     parser = JsonOutputParser(pydantic_object=SummarySchema)
     
+    raw_note = state.get('note_content', '')
+    clean_obs = "Clinical observation pending."
+    if "--- CURRENT EPISODE OBSERVATIONS ---" in raw_note:
+        clean_obs = raw_note.split("--- CURRENT EPISODE OBSERVATIONS ---")[1].split("---")[0].strip()
+    elif raw_note:
+        clean_obs = raw_note[:200].strip()
+
     fallback = {
-        "subjective": state.get('note_content', 'Not provided'),
-        "objective": "Not provided in clinical note",
-        "assessment": state.get('note_content', 'Clinical evaluation required'),
-        "plan": "Consult attending physician",
-        "keyFindings": [state.get('note_content', 'Clinical note provided')],
+        "subjective": clean_obs or "Patient presents for clinical evaluation.",
+        "objective": "Vitals and physical exam pending.",
+        "assessment": "Clinical evaluation required.",
+        "plan": "Consult attending physician.",
+        "keyFindings": [],
         "criticalAlerts": [],
-        "confidence": 0.8
+        "confidence": 0.5
     }
 
     summary = robust_json_invoke(

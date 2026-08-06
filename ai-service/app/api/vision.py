@@ -73,7 +73,62 @@ The JSON schema is:
 }
 """
 
+async def call_aws_bedrock_vision(image_bytes: bytes, image_type: str, prompt_text: str, model_id: str = "amazon.nova-pro-v1:0", max_tokens: int = 2048) -> dict:
+    log_info(f"🤖 VISION ROUTING: Executing with AWS Bedrock Vision ({model_id})...")
+    try:
+        import boto3
+        import asyncio
+        import re
+        import json
+        key_id = settings.AWS_ACCESS_KEY_ID or os.environ.get("AWS_ACCESS_KEY_ID")
+        secret_key = settings.AWS_SECRET_ACCESS_KEY or os.environ.get("AWS_SECRET_ACCESS_KEY")
+        region = settings.AWS_DEFAULT_REGION or os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
+        bedrock = boto3.client(
+            'bedrock-runtime',
+            aws_access_key_id=key_id,
+            aws_secret_access_key=secret_key,
+            region_name=region
+        )
+        
+        fmt = image_type.lower()
+        if fmt in ['jpg', 'jpeg']:
+            fmt = 'jpeg'
+        elif fmt not in ['png', 'gif', 'webp']:
+            fmt = 'png'
+
+        def _invoke_bedrock():
+            return bedrock.converse(
+                modelId=model_id,
+                messages=[{
+                    'role': 'user',
+                    'content': [
+                        {'image': {'format': fmt, 'source': {'bytes': image_bytes}}},
+                        {'text': prompt_text}
+                    ]
+                }],
+                inferenceConfig={'temperature': 0.1, 'maxTokens': max_tokens}
+            )
+
+        response = await asyncio.to_thread(_invoke_bedrock)
+        output_text = response['output']['message']['content'][0]['text']
+        clean_text = re.sub(r'```(?:json)?\s*', '', output_text)
+        clean_text = re.sub(r'\s*```', '', clean_text).strip()
+        return json.loads(clean_text)
+    except Exception as e:
+        log_error(f"AWS Bedrock Vision call failed ({model_id}): {e}")
+        return {"error": f"AWS Bedrock Vision failed: {str(e)}"}
+
 async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jpeg", max_tokens: int = 2048, custom_prompt: str = None, timeout: float = 300.0) -> dict:
+    actual_prompt = custom_prompt if custom_prompt else prompt
+
+    # Route to AWS Bedrock Vision models if selected
+    if state.GLOBAL_VISION_PREFERENCE == "aws_nova_pro":
+        return await call_aws_bedrock_vision(image_bytes, image_type, actual_prompt, model_id="apac.amazon.nova-pro-v1:0", max_tokens=max_tokens)
+    elif state.GLOBAL_VISION_PREFERENCE == "claude_35_sonnet":
+        return await call_aws_bedrock_vision(image_bytes, image_type, actual_prompt, model_id="apac.anthropic.claude-3-5-sonnet-20241022-v2:0", max_tokens=max_tokens)
+    elif state.GLOBAL_VISION_PREFERENCE == "aws_nova":
+        return await call_aws_bedrock_vision(image_bytes, image_type, actual_prompt, model_id="apac.amazon.nova-lite-v1:0", max_tokens=max_tokens)
+
     api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
     if not api_key:
         log_error("NVIDIA_API_KEY / NVIDIA_NIM_API_KEY is not set.")
@@ -81,8 +136,6 @@ async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jp
 
     base64_img = base64.b64encode(image_bytes).decode("utf-8")
     data_uri = f"data:image/{image_type};base64,{base64_img}"
-    
-    actual_prompt = custom_prompt if custom_prompt else prompt
 
     payload = {
         "model": "meta/llama-3.2-90b-vision-instruct",
@@ -388,6 +441,39 @@ class UpdateVisionResultRequest(BaseModel):
     extractedText: Optional[str] = None
     reportSummary: Optional[str] = None
     verified: Optional[bool] = True
+
+@router.get("/results")
+async def get_all_vision_results(db: AsyncSession = Depends(get_db)):
+    """Returns all Vision AI analysis results across all patients."""
+    result = await db.execute(
+        select(DocumentAnalysisEntity)
+        .order_by(DocumentAnalysisEntity.analyzed_at.desc())
+    )
+    records = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "fileKey": r.file_key,
+            "patientMrn": r.patient_mrn,
+            "documentType": r.document_type,
+            "extractedText": r.extracted_text,
+            "reportSummary": r.report_summary,
+            "nativeExtractedText": r.native_extracted_text,
+            "aiHeading": r.ai_heading,
+            "clinicalFindings": r.clinical_findings or [],
+            "imageMetadata": r.image_metadata or {},
+            "blurryRegions": r.blurry_regions or [],
+            "blurDoctorInputs": r.blur_doctor_inputs or [],
+            "imageWidth": r.image_width,
+            "imageHeight": r.image_height,
+            "modelUsed": r.model_used,
+            "analyzedAt": r.analyzed_at.isoformat() if r.analyzed_at else None,
+            "verified": getattr(r, 'verified', False),
+            "needsBlurAnnotation": getattr(r, 'needs_blur_annotation', False) or False,
+            "documentId": getattr(r, 'document_id', None),
+        }
+        for r in records
+    ]
 
 @router.get("/results/{mrn}")
 async def get_vision_results_by_mrn(mrn: str, db: AsyncSession = Depends(get_db)):
