@@ -25,6 +25,19 @@ const getConfidenceBg = (c) =>
 const getConfidenceLabel = (c) =>
     c >= 90 ? "High" : c >= 80 ? "Medium-High" : c >= 70 ? "Medium" : "Low";
 
+// Statuses that mean "still relevant to the Coding Workbench." BILLED is
+// deliberately excluded — once billed the encounter is closed and belongs to
+// the Billing page's history, not an active coding queue. Shared between
+// CodingList (which encounters to list) and CodingDetail (which encounter to
+// actually open) so the two can't drift apart — they used to: the list
+// filtered by status, but the detail view separately grabbed whatever
+// encounter had the latest encounterDate for this patient, with no regard
+// for whether THAT encounter was the one actually under coding review. If a
+// patient had a newer, unrelated encounter (even a blank freshly-created
+// one), the detail screen would silently show its empty data instead of the
+// encounter the coder actually clicked into.
+const CODING_QUEUE_STATUSES = new Set(['CODING_PENDING', 'CODING_COMPLETE', 'CODING_REVISION', 'BILLING_READY']);
+
 const ENCOUNTER_STATUS_CONFIG = {
     IN_PROGRESS:     { label: "In Progress",       variant: "info" },
     CODING_PENDING:  { label: "Awaiting Coding",   variant: "warning" },
@@ -62,7 +75,7 @@ function CodeSuggestionCard({ code, type, onAction, expanded, onToggle, isCustom
     const statusInfo = statusMap[code.status] || statusMap.pending;
 
     const handleSaveEdit = () => {
-        onAction(code.id, "modified", { code: editCode, description: editDesc });
+        onAction(code.id, "approved", { code: editCode, description: editDesc });
         setEditMode(false);
     };
 
@@ -235,14 +248,13 @@ function CodingList() {
     const [search, setSearch] = useState("");
     const { patients, loading: patientsLoading } = usePatients();
     const { encounters, loading: encountersLoading } = useAllEncounters();
-    const CODING_STATUSES = new Set(['CODING_PENDING', 'CODING_COMPLETE', 'CODING_REVISION', 'BILLING_READY', 'BILLED']);
 
     if (patientsLoading || encountersLoading) {
         return <div className="p-8 text-center text-neutral-500 dark:text-slate-400">Loading Patient Queue...</div>;
     }
 
     const codingQueue = (encounters || [])
-        .filter(e => CODING_STATUSES.has(e.status))
+        .filter(e => CODING_QUEUE_STATUSES.has(e.status))
         .map(e => {
             const p = (patients || []).find(pt => String(pt.id) === String(e.patientId));
             if (!p) return null;
@@ -340,7 +352,15 @@ function CodingDetail({ patientId }) {
     const { encounters, loading: encountersLoading } = usePatientEncounters(patientId);
     const reduxSuggestedCodes = useSelector(state => state.clinical.suggestedCodes);
 
-    const latestEncounter = encounters?.length > 0 ? encounters[0] : null;
+    const { user } = useSelector(state => state.auth);
+    const isCoder = user?.role === 'CODER' || user?.role === 'ADMIN';
+    const isPhysician = user?.role === 'PHYSICIAN' || user?.role === 'ADMIN';
+
+    // Prefer the encounter actually under coding review, not just whichever
+    // has the latest encounterDate — a patient can have a newer, unrelated
+    // encounter (see CODING_QUEUE_STATUSES comment above for why this matters).
+    const latestEncounter = (encounters || []).find(e => CODING_QUEUE_STATUSES.has(e.status))
+        || (encounters?.length > 0 ? encounters[0] : null);
 
     // ── State ──
     const [aiInsights, setAiInsights] = useState(null);
@@ -436,7 +456,7 @@ function CodingDetail({ patientId }) {
     const logActivity = useCallback(async (action, codeRef = null, details = "") => {
         if (!latestEncounter?.id) return;
         const event = {
-            actorName: "Medical Coder", actorType: "USER",
+            actorName: isCoder ? "Medical Coder" : "Physician", actorType: "USER",
             action, codeRef, details, timestamp: new Date().toISOString()
         };
         try {
@@ -447,9 +467,13 @@ function CodingDetail({ patientId }) {
         } catch (e) {
             setActivityLog(prev => [{ ...event, id: Date.now() }, ...prev]);
         }
-    }, [latestEncounter?.id]);
+    }, [latestEncounter?.id, isCoder]);
 
     const handleCodeAction = useCallback((id, newStatus, modifications = null) => {
+        if (!isCoder) {
+            showToast("Unauthorized: Only Medical Coders can review or modify code statuses.", "error");
+            return;
+        }
         const updateCodes = (setter) => setter(prev => prev.map(c => {
             if (c.id !== id) return c;
             if (newStatus === "delete") return null;
@@ -473,9 +497,13 @@ function CodingDetail({ patientId }) {
         } else {
             logActivity("CODE_DELETED", targetCode?.code, "Custom code removed");
         }
-    }, [icdCodes, cptCodes, customIcdCodes, customCptCodes, logActivity]);
+    }, [icdCodes, cptCodes, customIcdCodes, customCptCodes, logActivity, isCoder]);
 
     const handleAddCustomCode = (newCode) => {
+        if (!isCoder) {
+            showToast("Unauthorized: Only Medical Coders can add custom codes.", "error");
+            return;
+        }
         const codeObj = {
             id: `custom-${Date.now()}`, ...newCode,
             confidence: 100, status: "approved", isCustom: true,
@@ -489,6 +517,10 @@ function CodingDetail({ patientId }) {
 
     const handleSaveDraft = async () => {
         if (!latestEncounter?.id) return;
+        if (!isCoder) {
+            showToast("Unauthorized: Only Medical Coders (CODER role) can save coding drafts.", "error");
+            return;
+        }
         setIsSavingDraft(true);
         try {
             const draft = {
@@ -500,7 +532,11 @@ function CodingDetail({ patientId }) {
             setDraftSavedAt(new Date().toLocaleTimeString());
             showToast("Draft saved successfully");
         } catch (e) {
-            showToast("Failed to save draft", "error");
+            if (e.response?.status === 403) {
+                showToast("Unauthorized: Only Medical Coders (CODER role) can save coding drafts.", "error");
+            } else {
+                showToast("Failed to save draft", "error");
+            }
         } finally {
             setIsSavingDraft(false);
         }
@@ -508,6 +544,35 @@ function CodingDetail({ patientId }) {
 
     const handleSubmitForReview = async () => {
         if (!latestEncounter?.id) return;
+
+        if (!isCoder) {
+            showToast("Unauthorized: Only Medical Coders (CODER role) can submit coding reviews.", "error");
+            return;
+        }
+
+        const pendingCount = [
+            ...icdCodes.filter(c => c.status === 'pending'),
+            ...cptCodes.filter(c => c.status === 'pending'),
+            ...customIcdCodes.filter(c => c.status === 'pending'),
+            ...customCptCodes.filter(c => c.status === 'pending'),
+        ].length;
+
+        if (pendingCount > 0) {
+            showToast(`Cannot submit: ${pendingCount} code(s) are still pending review. Please Approve, Modify, or Reject all suggested codes first.`, "error");
+            return;
+        }
+
+        const allApproved = [
+            ...icdCodes.filter(c => c.status === 'approved' || c.status === 'modified'),
+            ...cptCodes.filter(c => c.status === 'approved' || c.status === 'modified'),
+            ...customIcdCodes.filter(c => c.status === 'approved' || c.status === 'modified'),
+            ...customCptCodes.filter(c => c.status === 'approved' || c.status === 'modified'),
+        ];
+        if (allApproved.length === 0) {
+            showToast("Cannot submit for review: At least 1 approved medical code is required for insurance billing.", "error");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             // Implicitly save draft first to preserve the exact code states (approved/rejected/modified)
@@ -519,15 +584,7 @@ function CodingDetail({ patientId }) {
             await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.CODING_DRAFT(latestEncounter.id), { draft });
             setDraftSavedAt(new Date().toLocaleTimeString());
 
-            const allApproved = [
-                ...icdCodes.filter(c => c.status === 'approved'),
-                ...cptCodes.filter(c => c.status === 'approved'),
-                ...customIcdCodes.filter(c => c.status === 'approved'),
-                ...customCptCodes.filter(c => c.status === 'approved'),
-            ];
-            if (allApproved.length > 0) {
-                await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.UPDATE_CODES(latestEncounter.id), { codes: allApproved });
-            }
+            await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.UPDATE_CODES(latestEncounter.id), { codes: allApproved });
             await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.UPDATE_STATUS(latestEncounter.id), { status: 'CODING_COMPLETE' });
             logActivity("SUBMITTED_FOR_REVIEW", null, `Submitted ${allApproved.length} approved codes for physician review`);
             showToast("Submitted for physician review!");
@@ -538,7 +595,11 @@ function CodingDetail({ patientId }) {
             }));
             setTimeout(() => navigate('/coding'), 1500);
         } catch (e) {
-            showToast("Failed to submit", "error");
+            if (e.response?.status === 403) {
+                showToast("Unauthorized: Only Medical Coders (CODER role) can submit coding reviews.", "error");
+            } else {
+                showToast("Failed to submit for review", "error");
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -553,6 +614,11 @@ function CodingDetail({ patientId }) {
     const handleApproveBilling = async () => {
         if (!latestEncounter?.id) return;
         
+        if (!isPhysician) {
+            showToast("Unauthorized: Only Physicians (PHYSICIAN role) can approve charts for billing.", "error");
+            return;
+        }
+
         const currentPending = [...icdCodes, ...cptCodes, ...customIcdCodes, ...customCptCodes]
                                 .filter(c => c.status === 'pending').length;
         if (currentPending > 0) {
@@ -567,7 +633,11 @@ function CodingDetail({ patientId }) {
             showToast("Approved for billing!");
             setTimeout(() => navigate('/coding'), 1500);
         } catch (e) {
-            showToast("Failed to approve", "error");
+            if (e.response?.status === 403) {
+                showToast("Unauthorized: Only Physicians (PHYSICIAN role) can approve charts for billing.", "error");
+            } else {
+                showToast("Failed to approve", "error");
+            }
         } finally {
             setIsApprovingBilling(false);
         }
@@ -575,6 +645,12 @@ function CodingDetail({ patientId }) {
 
     const handleRequestRevision = async () => {
         if (!latestEncounter?.id || !revisionNote.trim()) return;
+
+        if (!isPhysician) {
+            showToast("Unauthorized: Only Physicians (PHYSICIAN role) can request coding revisions.", "error");
+            return;
+        }
+
         setIsRequestingRevision(true);
         try {
             await axiosInstance.put(`/api/encounters/${latestEncounter.id}/request-revision`, {
@@ -586,7 +662,11 @@ function CodingDetail({ patientId }) {
             setRevisionNote('');
             setTimeout(() => navigate('/coding'), 1500);
         } catch (e) {
-            showToast("Failed to request revision", "error");
+            if (e.response?.status === 403) {
+                showToast("Unauthorized: Only Physicians (PHYSICIAN role) can request coding revisions.", "error");
+            } else {
+                showToast("Failed to request revision", "error");
+            }
         } finally {
             setIsRequestingRevision(false);
         }
@@ -625,13 +705,13 @@ function CodingDetail({ patientId }) {
     const soapSummary = aiInsights?.summary?.assessment || latestEncounter.chiefComplaint || "No summary available";
 
     const stats = {
-        approved: [...icdCodes, ...cptCodes, ...customIcdCodes, ...customCptCodes].filter(c => c.status === 'approved').length,
+        approved: [...icdCodes, ...cptCodes, ...customIcdCodes, ...customCptCodes].filter(c => c.status === 'approved' || c.status === 'modified').length,
         pending: [...icdCodes, ...cptCodes, ...customIcdCodes, ...customCptCodes].filter(c => c.status === 'pending').length,
         rejected: [...icdCodes, ...cptCodes, ...customIcdCodes, ...customCptCodes].filter(c => c.status === 'rejected').length,
     };
 
     const statusCfg = ENCOUNTER_STATUS_CONFIG[latestEncounter.status] || ENCOUNTER_STATUS_CONFIG.IN_PROGRESS;
-    const isEditable = !["BILLING_READY", "BILLED", "ARCHIVED"].includes(latestEncounter.status);
+    const isEditable = !["BILLING_READY", "BILLED", "ARCHIVED"].includes(latestEncounter.status) && isCoder;
 
     const activityIcons = { AI: <Sparkles className="w-3.5 h-3.5 text-primary-500" />, SYSTEM: <Activity className="w-3.5 h-3.5 text-neutral-500 dark:text-slate-400" />, USER: <User className="w-3.5 h-3.5 text-info-500" /> };
     const formatTimestamp = (ts) => {
@@ -761,16 +841,52 @@ function CodingDetail({ patientId }) {
                 <div className="grid grid-cols-12 gap-6">
                     {/* Left: Clinical Context */}
                     <div className="col-span-4 space-y-4">
-                        {/* SOAP Summary */}
+                        {/* Complete SOAP Note */}
                         <Card>
-                            <div className="flex items-center gap-2 mb-3">
-                                <Brain className="w-4 h-4 text-primary-500" />
-                                <h3 className="text-sm font-bold text-neutral-900 dark:text-white">AI SOAP Summary</h3>
+                            <div className="flex items-center justify-between mb-3 border-b border-neutral-200 dark:border-slate-700 pb-2">
+                                <div className="flex items-center gap-2">
+                                    <Brain className="w-4 h-4 text-primary-500" />
+                                    <h3 className="text-sm font-bold text-neutral-900 dark:text-white">Complete SOAP Note</h3>
+                                </div>
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 rounded-full border border-primary-200 dark:border-primary-800">
+                                    Clinical Summary
+                                </span>
                             </div>
                             {aiInsightsLoading ? (
-                                <div className="h-16 bg-neutral-200 dark:bg-slate-700 rounded animate-pulse" />
+                                <div className="space-y-2">
+                                    <div className="h-4 bg-neutral-200 dark:bg-slate-700 rounded animate-pulse w-3/4" />
+                                    <div className="h-16 bg-neutral-200 dark:bg-slate-700 rounded animate-pulse" />
+                                </div>
                             ) : (
-                                <p className="text-sm text-neutral-700 dark:text-slate-300 leading-relaxed">{soapSummary}</p>
+                                <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                                    {aiInsights?.summary?.subjective && (
+                                        <div className="p-2.5 bg-neutral-50 dark:bg-slate-800/50 rounded-6 border border-neutral-200 dark:border-slate-700">
+                                            <span className="text-xs font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wider block mb-1">Subjective (S)</span>
+                                            <p className="text-xs text-neutral-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{aiInsights.summary.subjective}</p>
+                                        </div>
+                                    )}
+                                    {aiInsights?.summary?.objective && (
+                                        <div className="p-2.5 bg-neutral-50 dark:bg-slate-800/50 rounded-6 border border-neutral-200 dark:border-slate-700">
+                                            <span className="text-xs font-bold text-info-600 dark:text-info-400 uppercase tracking-wider block mb-1">Objective (O)</span>
+                                            <p className="text-xs text-neutral-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{aiInsights.summary.objective}</p>
+                                        </div>
+                                    )}
+                                    {aiInsights?.summary?.assessment && (
+                                        <div className="p-2.5 bg-neutral-50 dark:bg-slate-800/50 rounded-6 border border-neutral-200 dark:border-slate-700">
+                                            <span className="text-xs font-bold text-warning-600 dark:text-warning-400 uppercase tracking-wider block mb-1">Assessment (A)</span>
+                                            <p className="text-xs text-neutral-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{aiInsights.summary.assessment}</p>
+                                        </div>
+                                    )}
+                                    {aiInsights?.summary?.plan && (
+                                        <div className="p-2.5 bg-neutral-50 dark:bg-slate-800/50 rounded-6 border border-neutral-200 dark:border-slate-700">
+                                            <span className="text-xs font-bold text-success-600 dark:text-success-400 uppercase tracking-wider block mb-1">Plan & Treatments (P)</span>
+                                            <p className="text-xs text-neutral-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{aiInsights.summary.plan}</p>
+                                        </div>
+                                    )}
+                                    {!aiInsights?.summary?.subjective && !aiInsights?.summary?.assessment && (
+                                        <p className="text-xs text-neutral-600 dark:text-slate-400 leading-relaxed">{latestEncounter.chiefComplaint || "No summary available"}</p>
+                                    )}
+                                </div>
                             )}
                         </Card>
 

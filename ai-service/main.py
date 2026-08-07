@@ -39,31 +39,43 @@ from app.core.kafka_consumer import start_kafka_consumers
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        for stmt in [
-            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS needs_blur_annotation BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS document_id VARCHAR",
-            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_check_status VARCHAR",
-            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_mismatches JSON",
-            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_confirmed BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR NOT NULL DEFAULT 'general'",
-            "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_id VARCHAR",
-            "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_label VARCHAR",
-            # Hybrid RAG: full-text index backing the BM25/keyword half of hybrid
-            # search (see app/core/rag.py's _keyword_search_raw). GENERATED ALWAYS
-            # ... STORED backfills every existing row automatically at ALTER TABLE
-            # time — no separate migration/backfill script needed. This only
-            # succeeds once langchain_pg_embedding exists (i.e. after at least one
-            # document has been ingested) — harmless no-op error otherwise, and it
-            # lands on the next restart after the first ingestion.
-            "ALTER TABLE langchain_pg_embedding ADD COLUMN IF NOT EXISTS content_tsv tsvector "
-            "GENERATED ALWAYS AS (to_tsvector('english', coalesce(document, ''))) STORED",
-            "CREATE INDEX IF NOT EXISTS idx_langchain_pg_embedding_content_tsv "
-            "ON langchain_pg_embedding USING GIN (content_tsv)",
-        ]:
-            try:
-                await conn.execute(text(stmt))
-            except Exception as e:
-                print(f"Migration error for '{stmt}': {e}")
+
+    # Each statement below gets its OWN transaction (not shared with create_all
+    # or each other). Postgres aborts an entire transaction on any single
+    # failed statement — sharing one transaction meant a single expected
+    # failure (e.g. the langchain_pg_embedding ALTER below, on a fresh DB
+    # where that table doesn't exist yet because LangChain only creates it
+    # lazily on first ingestion) would silently roll back everything else in
+    # the same transaction, INCLUDING the create_all above — which is exactly
+    # how document_analysis/chat_sessions/ai_preferences went missing on a
+    # fresh database despite create_all "running successfully."
+    for stmt in [
+        "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS needs_blur_annotation BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS document_id VARCHAR",
+        "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_check_status VARCHAR",
+        "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_mismatches JSON",
+        "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_confirmed BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR NOT NULL DEFAULT 'general'",
+        "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_id VARCHAR",
+        "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_label VARCHAR",
+        "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS created_by VARCHAR",
+        # Hybrid RAG: full-text index backing the BM25/keyword half of hybrid
+        # search (see app/core/rag.py's _keyword_search_raw). GENERATED ALWAYS
+        # ... STORED backfills every existing row automatically at ALTER TABLE
+        # time — no separate migration/backfill script needed. This only
+        # succeeds once langchain_pg_embedding exists (i.e. after at least one
+        # document has been ingested) — harmless no-op error otherwise, and it
+        # lands on the next restart after the first ingestion.
+        "ALTER TABLE langchain_pg_embedding ADD COLUMN IF NOT EXISTS content_tsv tsvector "
+        "GENERATED ALWAYS AS (to_tsvector('english', coalesce(document, ''))) STORED",
+        "CREATE INDEX IF NOT EXISTS idx_langchain_pg_embedding_content_tsv "
+        "ON langchain_pg_embedding USING GIN (content_tsv)",
+    ]:
+        try:
+            async with engine.begin() as stmt_conn:
+                await stmt_conn.execute(text(stmt))
+        except Exception as e:
+            print(f"Migration error for '{stmt}': {e}")
 
     # Load the persisted LLM/vision preference (if any) into the in-memory
     # globals before serving traffic, so a restart doesn't silently reset a

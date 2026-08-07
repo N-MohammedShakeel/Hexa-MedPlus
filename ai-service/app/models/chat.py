@@ -11,6 +11,7 @@ class ChatSessionEntity(Base):
     mode = Column(String, nullable=False, default="general")  # 'general' | 'patient' | 'protocol'
     context_id = Column(String, nullable=True)  # patient MRN (mode=patient) or document file_key (mode=protocol)
     context_label = Column(String, nullable=True)  # human-readable label for the picked context, e.g. patient name
+    created_by = Column(String, nullable=True)  # X-User-Name of the user who started this chat — scopes visibility
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

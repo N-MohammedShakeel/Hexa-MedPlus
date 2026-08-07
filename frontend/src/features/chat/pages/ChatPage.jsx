@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 import { chatService } from '../../../services/api/chatService';
 import { clinicalService } from '../../../services/api/clinicalService';
-import { Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles, Users, BookOpen, Globe, X, ChevronLeft } from 'lucide-react';
+import { Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles, Users, BookOpen, Globe, X, ChevronLeft, Lock } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInputButton from '../../../components/ui/VoiceInputButton';
+import { notifyError } from '../../../common/utils/toast';
 
 const MODE_META = {
   general: { label: 'General', icon: Globe },
@@ -13,6 +15,9 @@ const MODE_META = {
 
 // ─── New Conversation Modal — forces a scope choice before querying ───────────
 function NewChatModal({ onClose, onCreate }) {
+  const user = useSelector((state) => state.auth.user);
+  const isPhysician = user?.role === 'PHYSICIAN';
+
   const [step, setStep] = useState('mode'); // 'mode' | 'patient' | 'protocol'
   const [patientQuery, setPatientQuery] = useState('');
   const [patients, setPatients] = useState([]);
@@ -67,16 +72,18 @@ function NewChatModal({ onClose, onCreate }) {
                 <span className="block text-xs text-neutral-500 dark:text-slate-400 mt-0.5">No patient or document context — general clinical knowledge only.</span>
               </span>
             </button>
-            <button
-              onClick={() => setStep('patient')}
-              className="w-full text-left p-3 rounded-6 border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"
-            >
-              <Users className="w-4 h-4 text-primary-500 mt-0.5" />
-              <span>
-                <span className="block text-sm font-semibold text-neutral-900 dark:text-white">Patient Data</span>
-                <span className="block text-xs text-neutral-500 dark:text-slate-400 mt-0.5">Scoped to one patient's notes and lab history.</span>
-              </span>
-            </button>
+            {isPhysician && (
+              <button
+                onClick={() => setStep('patient')}
+                className="w-full text-left p-3 rounded-6 border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3 cursor-pointer"
+              >
+                <Users className="w-4 h-4 text-primary-500 mt-0.5" />
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-neutral-900 dark:text-white">Patient Data</span>
+                  <span className="block text-xs text-neutral-500 dark:text-slate-400 mt-0.5">Scoped to one patient's notes and lab history.</span>
+                </span>
+              </button>
+            )}
             <button
               onClick={() => setStep('protocol')}
               className="w-full text-left p-3 rounded-6 border border-neutral-200 dark:border-slate-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-start gap-3"

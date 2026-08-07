@@ -69,7 +69,7 @@ def _build_filter_clause(filter_metadata: dict):
     # Keys are always hardcoded internal strings ("type", "patient_id",
     # "file_key") — never user input — so the f-string key interpolation
     # below carries no injection risk; values are always parameterized.
-    clauses = [f"cmetadata->>'{k}' = %s" for k in filter_metadata]
+    clauses = [f"e.cmetadata->>'{k}' = %s" for k in filter_metadata]
     return " AND ".join(clauses), list(filter_metadata.values())
 
 
@@ -83,7 +83,7 @@ def _vector_search_raw(query: str, filter_metadata: dict, k: int) -> list:
         FROM langchain_pg_embedding e
         JOIN langchain_pg_collection c ON e.collection_id = c.uuid
         WHERE c.name = %s AND {filter_sql}
-        ORDER BY e.embedding <=> %s
+        ORDER BY e.embedding <=> %s::vector
         LIMIT %s
     """
     pool = _get_pg_pool()
@@ -91,7 +91,7 @@ def _vector_search_raw(query: str, filter_metadata: dict, k: int) -> list:
     try:
         register_vector(conn)
         with conn.cursor() as cur:
-            cur.execute(sql, [COLLECTION_NAME] + params + [query_vec, k])
+            cur.execute(sql, [COLLECTION_NAME] + params + [str(query_vec), k])
             rows = cur.fetchall()
         return [{"uuid": r[0], "document": r[1], "metadata": r[2] or {}} for r in rows]
     finally:

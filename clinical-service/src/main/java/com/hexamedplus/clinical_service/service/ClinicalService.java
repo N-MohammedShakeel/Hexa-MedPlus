@@ -127,6 +127,9 @@ public class ClinicalService {
                     if (request.getPrimaryDiagnosis() != null) {
                         entity.setPrimaryDiagnosis(request.getPrimaryDiagnosis());
                     }
+                    if (request.getStatus() != null) {
+                        entity.setStatus(request.getStatus());
+                    }
                     return patientRepository.save(entity);
                 })
                 .subscribeOn(Schedulers.boundedElastic())

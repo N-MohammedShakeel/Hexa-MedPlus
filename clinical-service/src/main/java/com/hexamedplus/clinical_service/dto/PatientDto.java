@@ -28,6 +28,7 @@ public class PatientDto {
     public static class UpdateRequest {
         private String department;
         private String primaryDiagnosis;
+        private String status;
     }
 
     @Data @NoArgsConstructor @AllArgsConstructor @Builder

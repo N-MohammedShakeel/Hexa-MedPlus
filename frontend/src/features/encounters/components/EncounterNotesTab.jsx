@@ -35,6 +35,7 @@ export default function EncounterNotesTab({
     handleEditPatientNote,
     noteCommentInputs, setNoteCommentInputs,
     handleSaveNoteComment,
+    handleDeleteNoteComment,
     TAG_CONFIG,
     unarchivedAt,
     patient,
@@ -152,9 +153,20 @@ export default function EncounterNotesTab({
                 )}
 
                 {note.comment && (
-                    <div className="mt-2 p-2.5 bg-info-50 dark:bg-info-900/10 border border-info-200 dark:border-info-800 rounded-8">
-                        <p className="text-xs font-semibold text-info-700 dark:text-info-400 mb-0.5">Doctor Comment</p>
-                        <p className="text-xs text-info-600 dark:text-info-300">{note.comment}</p>
+                    <div className="mt-2 p-2.5 bg-info-50 dark:bg-info-900/10 border border-info-200 dark:border-info-800 rounded-8 flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-info-700 dark:text-info-400 mb-0.5">Doctor Comment</p>
+                            <p className="text-xs text-info-600 dark:text-info-300 break-words">{note.comment}</p>
+                        </div>
+                        {!isHistorical && !isLocked && (
+                            <button
+                                onClick={() => handleDeleteNoteComment(note)}
+                                className="p-1 text-info-500 hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-900/20 rounded-6 transition-colors flex-shrink-0"
+                                title="Delete Comment"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                     </div>
                 )}
 

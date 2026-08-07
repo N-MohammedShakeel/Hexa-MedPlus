@@ -55,6 +55,7 @@ export default function PatientManagementPage() {
   const [editingPatientId, setEditingPatientId] = useState(null); // patient.id whose edit popover is open
   const [editDept,        setEditDept]        = useState("");
   const [editDiagnosis,   setEditDiagnosis]   = useState("");
+  const [editStatus,      setEditStatus]      = useState("Active");
   const [isSavingEdit,    setIsSavingEdit]    = useState(false);
   const itemsPerPage = 10;
   const confirm = useConfirm();
@@ -66,13 +67,14 @@ export default function PatientManagementPage() {
     setEditingPatientId(patient.id);
     setEditDept(patient.department || DEPARTMENT_OPTIONS[0]);
     setEditDiagnosis(patient.primaryDiagnosis === 'Pending Review' ? '' : (patient.primaryDiagnosis || ''));
+    setEditStatus(patient.status || "Active");
   };
 
   const saveEditPatient = async (e) => {
     e.stopPropagation();
     setIsSavingEdit(true);
     try {
-      await dispatch(updatePatient(editingPatientId, { department: editDept, primaryDiagnosis: editDiagnosis }));
+      await dispatch(updatePatient(editingPatientId, { department: editDept, primaryDiagnosis: editDiagnosis, status: editStatus }));
       setEditingPatientId(null);
     } catch {
       // updatePatient thunk already surfaced a toast — keep the popover open to retry
@@ -377,6 +379,17 @@ export default function PatientManagementPage() {
               placeholder="e.g. Type 2 Diabetes"
               className="w-full px-3 py-2 text-sm border border-neutral-400 dark:border-slate-600 rounded-6 bg-white dark:bg-slate-900 text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">Status</label>
+            <select
+              value={editStatus}
+              onChange={e => setEditStatus(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-neutral-400 dark:border-slate-600 rounded-6 bg-white dark:bg-slate-900 text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-neutral-200 dark:border-slate-700">
             <button onClick={() => setEditingPatientId(null)} className="px-3 py-1.5 text-xs font-semibold text-neutral-600 dark:text-slate-400 hover:text-neutral-900 dark:hover:text-slate-200">Cancel</button>

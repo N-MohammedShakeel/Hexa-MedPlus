@@ -174,7 +174,10 @@ export const archivePatient = (id) => {
       );
       return response;
     } catch (error) {
-      const errorMsg = error.response?.data?.message || error.message || "Failed to archive patient";
+      let errorMsg = error.response?.data?.message || error.message || "Failed to archive patient";
+      if (error.response?.status === 403) {
+        errorMsg = "Unauthorized: Only Physicians and Administrators can archive patients.";
+      }
       dispatch(patientActions.setError(errorMsg));
       toast.error(errorMsg);
       setTimeout(() => dispatch(patientActions.setError(null)), 3000);
@@ -202,7 +205,10 @@ export const unarchivePatient = (id) => {
       );
       return response;
     } catch (error) {
-      const errorMsg = error.response?.data?.message || error.message || "Failed to unarchive patient";
+      let errorMsg = error.response?.data?.message || error.message || "Failed to unarchive patient";
+      if (error.response?.status === 403) {
+        errorMsg = "Unauthorized: Only Physicians and Administrators can unarchive patients.";
+      }
       dispatch(patientActions.setError(errorMsg));
       toast.error(errorMsg);
       setTimeout(() => dispatch(patientActions.setError(null)), 3000);

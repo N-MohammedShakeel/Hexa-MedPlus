@@ -20,8 +20,8 @@ const ALL_ROLES = [ROLES.PHYSICIAN, ROLES.CODER, ROLES.ADMIN];
 // with no entry here is open to any authenticated role.
 export const PAGE_ACCESS = {
   "/dashboard": ALL_ROLES,
-  "/patients": ALL_ROLES,
-  "/documents": ALL_ROLES,
+  "/patients": [ROLES.PHYSICIAN, ROLES.ADMIN],
+  "/documents": [ROLES.PHYSICIAN, ROLES.ADMIN],
   "/protocols": ALL_ROLES,
   "/records": ALL_ROLES,
   "/settings": ALL_ROLES,

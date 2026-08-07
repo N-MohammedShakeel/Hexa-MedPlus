@@ -346,9 +346,23 @@ export default function EncounterWorkspacePage() {
             await axiosInstance.put(`/api/clinical/patients/${patient.mrn}/notes/${note.id}`, { comment });
             setPatientNotes(prev => prev.map(n => n.id === note.id ? { ...n, comment } : n));
             setNoteCommentInputs(prev => ({ ...prev, [note.id]: '' }));
+            notifySuccess('Comment added successfully');
         } catch (err) {
             console.error('Failed to save comment:', err);
             notifyError('Failed to save comment.');
+        }
+    };
+
+    const handleDeleteNoteComment = async (note) => {
+        const ok = await confirm('Delete this comment?');
+        if (!ok) return;
+        try {
+            await axiosInstance.put(`/api/clinical/patients/${patient.mrn}/notes/${note.id}`, { comment: "" });
+            setPatientNotes(prev => prev.map(n => n.id === note.id ? { ...n, comment: null } : n));
+            notifySuccess('Comment deleted successfully');
+        } catch (err) {
+            console.error('Failed to delete comment:', err);
+            notifyError('Failed to delete comment.');
         }
     };
 
@@ -358,6 +372,7 @@ export default function EncounterWorkspacePage() {
         try {
             await axiosInstance.delete(`/api/clinical/patients/${patient.mrn}/notes/${noteId}`);
             setPatientNotes(prev => prev.filter(n => n.id !== noteId));
+            notifySuccess('Note deleted successfully');
         } catch (err) {
             console.error('Failed to delete note:', err);
             notifyError('Failed to delete note.');
@@ -368,6 +383,7 @@ export default function EncounterWorkspacePage() {
         try {
             await axiosInstance.put(`/api/clinical/patients/${patient.mrn}/notes/${noteId}`, { content: newContent });
             setPatientNotes(prev => prev.map(n => n.id === noteId ? { ...n, content: newContent } : n));
+            notifySuccess('Note updated successfully');
         } catch (err) {
             console.error('Failed to edit note:', err);
             notifyError('Failed to edit note.');
@@ -476,9 +492,11 @@ const [isSigning, setIsSigning] = useState(false);
     const isLocked = latestEncounter && latestEncounter.status !== 'IN_PROGRESS';
 
     // patientNotes is every note the patient has ever had, across all encounters —
-    // scope down to just THIS encounter's own notes so a brand-new encounter can't
-    // be signed just because the patient has old notes from a previous visit.
-    const currentEncounterNotes = (patientNotes || []).filter(n => n.encounterId === latestEncounter?.id);
+    // scope down to just THIS encounter's own notes (with type-safe string comparison).
+    const currentEncounterNotes = (patientNotes || []).filter(n => String(n.encounterId) === String(latestEncounter?.id));
+
+    // Can sign if there are notes for this encounter, AI insights generated (aiData), patient notes, or chief complaint
+    const canSignEncounter = currentEncounterNotes.length > 0 || !!aiData || (patientNotes && patientNotes.length > 0) || !!latestEncounter?.chiefComplaint;
 
     const LOCKED_STATUS_LABELS = {
         CODING_PENDING:  { text: 'Sent to Coding',     color: 'bg-warning-50 text-warning-500 border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/30' },
@@ -611,7 +629,7 @@ const [isSigning, setIsSigning] = useState(false);
                             variant="secondary"
                             icon={Send}
                             onClick={handleSignEncounter}
-                            disabled={isSigning || currentEncounterNotes.length === 0}
+                            disabled={isSigning || !canSignEncounter}
                         >
                             {isSigning ? "Signing..." : "Sign & Lock Encounter"}
                         </Button>
@@ -677,6 +695,7 @@ const [isSigning, setIsSigning] = useState(false);
                                 handleEditPatientNote={handleEditPatientNote}
                                 noteCommentInputs={noteCommentInputs} setNoteCommentInputs={setNoteCommentInputs}
                                 handleSaveNoteComment={handleSaveNoteComment}
+                                handleDeleteNoteComment={handleDeleteNoteComment}
                                 TAG_CONFIG={TAG_CONFIG}
                                 unarchivedAt={patient?.unarchivedAt}
                             />

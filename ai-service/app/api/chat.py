@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -8,9 +8,11 @@ from app.models.chat import ChatSessionEntity, ChatMessageEntity
 from pydantic import BaseModel
 from typing import Optional
 import asyncio
+import httpx
 import json
 from datetime import datetime, timezone
 from app.core.rag import search_patient_history, search_specific_protocol
+from app.utils.logger import log_warn
 
 router = APIRouter()
 
@@ -36,9 +38,17 @@ STRICT DOMAIN RESTRICTION & SAFETY GUARDRAILS (UNBREAKABLE):
 # ─── Session CRUD ─────────────────────────────────────────────────────────────
 
 @router.get("/sessions")
-async def list_sessions(db: AsyncSession = Depends(get_db)):
+async def list_sessions(
+    x_user_name: Optional[str] = Header(None, alias="X-User-Name"),
+    db: AsyncSession = Depends(get_db)
+):
+    # Chat sessions are private to the user who started them — a session's
+    # "patient" mode messages can carry real EHR/PHI content (see send_message
+    # below), so this can't be a shared list across every logged-in account.
     result = await db.execute(
-        select(ChatSessionEntity).order_by(ChatSessionEntity.updated_at.desc())
+        select(ChatSessionEntity)
+        .where(ChatSessionEntity.created_by == x_user_name)
+        .order_by(ChatSessionEntity.updated_at.desc())
     )
     sessions = result.scalars().all()
     return [
@@ -55,14 +65,27 @@ class CreateSessionRequest(BaseModel):
     context_label: Optional[str] = None
 
 @router.post("/sessions")
-async def create_session(request: CreateSessionRequest = None, db: AsyncSession = Depends(get_db)):
+async def create_session(
+    request: CreateSessionRequest = None,
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    x_user_name: Optional[str] = Header(None, alias="X-User-Name"),
+    db: AsyncSession = Depends(get_db)
+):
     request = request or CreateSessionRequest()
     mode = request.mode if request.mode in ("general", "patient", "protocol") else "general"
+
+    if mode == "patient" and x_user_role and x_user_role.upper() != "PHYSICIAN":
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized: Patient Data Chat Scope is restricted to Physicians."
+        )
+
     session = ChatSessionEntity(
         title="New Conversation",
         mode=mode,
         context_id=request.context_id if mode != "general" else None,
         context_label=request.context_label if mode != "general" else None,
+        created_by=x_user_name,
     )
     db.add(session)
     await db.commit()
@@ -72,15 +95,34 @@ async def create_session(request: CreateSessionRequest = None, db: AsyncSession 
         "mode": session.mode, "contextId": session.context_id, "contextLabel": session.context_label
     }
 
+async def _get_owned_session(session_id: str, x_user_name: Optional[str], db: AsyncSession) -> ChatSessionEntity:
+    result = await db.execute(select(ChatSessionEntity).where(ChatSessionEntity.id == session_id))
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.created_by and session.created_by != x_user_name:
+        raise HTTPException(status_code=403, detail="Unauthorized: this chat session belongs to another user.")
+    return session
+
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_session(
+    session_id: str,
+    x_user_name: Optional[str] = Header(None, alias="X-User-Name"),
+    db: AsyncSession = Depends(get_db)
+):
+    await _get_owned_session(session_id, x_user_name, db)
     await db.execute(delete(ChatMessageEntity).where(ChatMessageEntity.session_id == session_id))
     await db.execute(delete(ChatSessionEntity).where(ChatSessionEntity.id == session_id))
     await db.commit()
     return {"status": "deleted"}
 
 @router.get("/sessions/{session_id}/messages")
-async def get_messages(session_id: str, db: AsyncSession = Depends(get_db)):
+async def get_messages(
+    session_id: str,
+    x_user_name: Optional[str] = Header(None, alias="X-User-Name"),
+    db: AsyncSession = Depends(get_db)
+):
+    await _get_owned_session(session_id, x_user_name, db)
     result = await db.execute(
         select(ChatMessageEntity)
         .where(ChatMessageEntity.session_id == session_id)
@@ -99,15 +141,21 @@ class ChatRequest(BaseModel):
     message: str
 
 @router.post("/send")
-async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def send_message(
+    request: ChatRequest,
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    x_user_name: Optional[str] = Header(None, alias="X-User-Name"),
+    db: AsyncSession = Depends(get_db)
+):
     """Save user message and return a streaming AI response."""
-    # 1. Get or validate session
-    result = await db.execute(
-        select(ChatSessionEntity).where(ChatSessionEntity.id == request.session_id)
-    )
-    session = result.scalars().first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    # 1. Get or validate session (and confirm the caller owns it)
+    session = await _get_owned_session(request.session_id, x_user_name, db)
+
+    if session.mode == "patient" and x_user_role and x_user_role.upper() != "PHYSICIAN":
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized: Patient Data Chat Scope is restricted to Physicians."
+        )
 
     # 2. Save user message
     user_msg = ChatMessageEntity(
@@ -165,15 +213,86 @@ async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db))
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
         # Mode-scoped context injection — narrows retrieval instead of stuffing
-        # the whole hospital's data into the prompt (see future_enhancements.md, "Chat Modes")
+        # the whole hospital's data into the prompt
         if session.mode == "patient" and session.context_id:
+            patient_name = session.context_label or "Selected Patient"
+            patient_mrn = session.context_id
+            messages.append({
+                "role": "system",
+                "content": (
+                    f"ACTIVE PATIENT CONTEXT: You are analyzing patient '{patient_name}' (MRN: {patient_mrn}). "
+                    f"All user questions in this chat session refer strictly to this patient. NEVER ask the "
+                    f"user for the patient's name, MRN, or identity, as they have already selected {patient_name}. "
+                    f"The user is this patient's authenticated treating clinician, viewing this chat from inside "
+                    f"the hospital's own EHR system with legitimate, authorized access to this patient's record — "
+                    f"this is not a third party asking about a stranger. Sharing this patient's clinical "
+                    f"information (diagnoses, medications, labs, history) with this user is your primary function "
+                    f"here, not a privacy violation. Do NOT refuse or deflect with generic "
+                    f"'I cannot share personal information' language — answer directly from the EHR summary and "
+                    f"historical records provided below."
+                )
+            })
+            # Try fetching live EHR data from clinical-service
+            try:
+                cs_base = 'http://clinical-service:8081' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
+                async with httpx.AsyncClient(timeout=5.0) as http_client:
+                    p_resp = await http_client.get(f"{cs_base}/api/patients/mrn/{patient_mrn}")
+                    if p_resp.status_code == 200:
+                        p_data = p_resp.json()
+                        meds = p_data.get('activeMedications') or []
+                        allergies = p_data.get('allergies') or []
+                        ehr_summary = (
+                            f"Patient Full Name: {p_data.get('firstName', '')} {p_data.get('lastName', '')}\n"
+                            f"MRN: {p_data.get('mrn')}\n"
+                            f"Current Status: {p_data.get('status', 'Active')}\n"
+                            f"Department: {p_data.get('department', 'General')}\n"
+                            f"Primary Diagnosis: {p_data.get('primaryDiagnosis', 'None specified')}\n"
+                            f"Active Medications: {', '.join(meds) if meds else 'None'}\n"
+                            f"Allergies: {', '.join(allergies) if allergies else 'NKDA'}"
+                        )
+                        messages.append({
+                            "role": "system",
+                            "content": f"Live Patient EHR Summary:\n{ehr_summary}"
+                        })
+            except Exception as e:
+                log_warn(f"Chat: live EHR fetch failed for MRN {patient_mrn}: {e}")
+
+            # Also fetch historical document analyses from SQL database for this MRN
+            try:
+                from app.models.document_analysis import DocumentAnalysisEntity
+                doc_result = await db.execute(
+                    select(DocumentAnalysisEntity)
+                    .where(DocumentAnalysisEntity.patient_mrn == patient_mrn)
+                    .order_by(DocumentAnalysisEntity.analyzed_at.desc())
+                )
+                historical_docs = doc_result.scalars().all()
+                if historical_docs:
+                    doc_entries = []
+                    for d in historical_docs[:5]:
+                        heading = d.ai_heading or d.document_type or "Historical Record"
+                        text_excerpt = d.report_summary or d.extracted_text or ""
+                        if text_excerpt:
+                            doc_entries.append(f"• [{heading}]: {text_excerpt[:400]}")
+                    if doc_entries:
+                        messages.append({
+                            "role": "system",
+                            "content": f"Historical Patient Medical Records & Document Analyses for {patient_name}:\n" + "\n".join(doc_entries)
+                        })
+            except Exception as e:
+                log_warn(f"Chat: historical document fetch failed for MRN {patient_mrn}: {e}")
+
             context = await asyncio.to_thread(search_patient_history, request.message, session.context_id)
             if context:
-                messages.append({"role": "system", "content": f"Relevant history for this patient:\n{context}"})
+                messages.append({"role": "system", "content": f"Relevant document history for {patient_name}:\n{context}"})
         elif session.mode == "protocol" and session.context_id:
+            protocol_name = session.context_label or session.context_id
+            messages.append({
+                "role": "system",
+                "content": f"ACTIVE PROTOCOL CONTEXT: The user is asking about the hospital guideline/protocol '{protocol_name}'."
+            })
             context = await asyncio.to_thread(search_specific_protocol, request.message, session.context_id)
             if context:
-                messages.append({"role": "system", "content": f"Relevant excerpt from the selected protocol:\n{context}"})
+                messages.append({"role": "system", "content": f"Relevant excerpt from protocol '{protocol_name}':\n{context}"})
 
         for h in history:
             messages.append({"role": h.role, "content": h.content})

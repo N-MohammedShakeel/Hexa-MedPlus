@@ -32,12 +32,24 @@ export default function AddPatientModal({ isOpen, onClose }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const trimmedMrn = formData.mrn.trim();
+    if (trimmedMrn && (trimmedMrn.length < 5 || trimmedMrn.length > 18)) {
+      notifyError("MRN must be between 5 and 18 characters long (e.g. MRN-12345 or 12345678).");
+      return;
+    }
+
+    if (trimmedMrn && !/^[A-Za-z0-9-]+$/.test(trimmedMrn)) {
+      notifyError("MRN can only contain letters, numbers, and hyphens.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const nameParts = formData.name.trim().split(" ");
     const firstName = nameParts[0] || "";
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-    const mrnToUse = formData.mrn || `MRN-${Math.floor(Math.random() * 90000) + 10000}`;
+    const mrnToUse = trimmedMrn || `MRN-${Math.floor(Math.random() * 900000) + 100000}`;
 
     try {
       await dispatch(addNewPatient({
@@ -70,7 +82,7 @@ export default function AddPatientModal({ isOpen, onClose }) {
             <div className="col-span-2">
               <Input label="Full Name" name="name" value={formData.name} onChange={handleChange} required />
             </div>
-            <Input label="MRN (Optional)" name="mrn" value={formData.mrn} onChange={handleChange} placeholder="e.g. MRN-12345" />
+            <Input label="MRN (Optional)" name="mrn" value={formData.mrn} onChange={handleChange} placeholder="e.g. MRN-102948 (5-18 chars)" />
             <Input label="Date of Birth" type="date" name="dob" value={formData.dob} onChange={handleChange} max={todayStr} required />
             <div>
               <label className="block text-xs font-semibold text-neutral-800 dark:text-slate-300 mb-1.5">Gender</label>

@@ -12,6 +12,8 @@ import EmptyState from "../../../components/ui/EmptyState";
 import { Search, ArchiveRestore, Loader2, FileText } from "lucide-react";
 import { logPatientUnarchived } from "../../../services/api/auditService";
 import { useConfirm } from "../../../contexts/ConfirmContext";
+import { ROLES } from "../../../common/constants/permissions";
+import { notifyError } from "../../../common/utils/toast";
 
 const PAGE_SIZE = 10;
 
@@ -20,8 +22,11 @@ export default function RecordsPage() {
   const confirm = useConfirm();
   const archivedPatients = useSelector(selectArchivedPatients);
   const status = useSelector(selectArchivedPatientStatus);
+  const { user } = useSelector((state) => state.auth);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+
+  const canUnarchive = user?.role === ROLES.PHYSICIAN || user?.role === ROLES.ADMIN;
 
   useEffect(() => {
     if (status === "idle") dispatch(fetchArchivedPatients());
@@ -41,6 +46,10 @@ export default function RecordsPage() {
   const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleUnarchive = async (patient) => {
+    if (!canUnarchive) {
+      notifyError("Unauthorized: Only Physicians and Administrators can unarchive patients.");
+      return;
+    }
     const ok = await confirm(`Unarchive ${patient.name}? They will reappear in the active Patient Management workspace with their full history intact.`);
     if (!ok) return;
     try {
@@ -118,8 +127,13 @@ export default function RecordsPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => handleUnarchive(patient)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-4 border text-[11px] font-semibold border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors"
-                          title="Unarchive this patient"
+                          disabled={!canUnarchive}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-4 border text-[11px] font-semibold transition-colors ${
+                            canUnarchive 
+                              ? "border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 cursor-pointer"
+                              : "border-neutral-300 dark:border-slate-700 bg-neutral-100 dark:bg-slate-800 text-neutral-400 dark:text-slate-500 cursor-not-allowed opacity-60"
+                          }`}
+                          title={canUnarchive ? "Unarchive this patient" : "Unauthorized: Only Physicians and Administrators can unarchive patients"}
                         >
                           <ArchiveRestore className="w-3.5 h-3.5" />
                           Unarchive

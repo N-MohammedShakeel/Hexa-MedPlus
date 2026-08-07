@@ -340,14 +340,8 @@ export default function EncounterAIPane({
                                                     <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100 mt-1">{code.code}</p>
                                                     <p className="text-xs text-neutral-600 dark:text-neutral-400">{code.description}</p>
                                                 </div>
-                                                <button className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700">Approve</button>
                                             </div>
                                         ))}
-                                        <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-2">
-                                            <Button size="sm" variant="primary" onClick={() => navigate(`/coding/${patientId}`)}>
-                                                Push to Workbench
-                                            </Button>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
