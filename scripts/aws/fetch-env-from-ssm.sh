@@ -12,7 +12,7 @@ PREFIX="/hexamed"
 
 get() {
   aws ssm get-parameter --name "$PREFIX/$1" --with-decryption --region "$REGION" \
-    --query 'Parameter.Value' --output text
+    --query 'Parameter.Value' --output text 2>/dev/null || echo ""
 }
 
 cat > .env <<EOF
