@@ -158,7 +158,6 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - JWT_SECRET=${JWT_SECRET}
-      - SPRING_CLOUD_GATEWAY_ROUTES_2_URI=http://ai-service:8083
       # The CloudFront domain (or custom domain) the frontend is served from —
       # required or the browser will get blocked by CORS calling the ALB.
       - CORS_EXTRA_ORIGIN=${CORS_EXTRA_ORIGIN}
