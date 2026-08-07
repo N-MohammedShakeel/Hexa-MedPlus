@@ -91,13 +91,6 @@ services:
         condition: service_healthy
     networks:
       - hexamed-net
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: ${AWS_DEFAULT_REGION:-ap-south-1}
-        awslogs-group: /hexamed/clinical-service
-        awslogs-create-group: "true"
-        awslogs-stream-prefix: clinical-service
 
   document-service:
     build:
@@ -125,13 +118,6 @@ services:
         condition: service_healthy
     networks:
       - hexamed-net
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: ${AWS_DEFAULT_REGION:-ap-south-1}
-        awslogs-group: /hexamed/document-service
-        awslogs-create-group: "true"
-        awslogs-stream-prefix: document-service
 
   ai-service:
     build:
@@ -159,13 +145,6 @@ services:
         condition: service_started
     networks:
       - hexamed-net
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: ${AWS_DEFAULT_REGION:-ap-south-1}
-        awslogs-group: /hexamed/ai-service
-        awslogs-create-group: "true"
-        awslogs-stream-prefix: ai-service
 
   api-gateway:
     build:
@@ -190,13 +169,6 @@ services:
       - redis
     networks:
       - hexamed-net
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: ${AWS_DEFAULT_REGION:-ap-south-1}
-        awslogs-group: /hexamed/api-gateway
-        awslogs-create-group: "true"
-        awslogs-stream-prefix: api-gateway
 
 networks:
   hexamed-net:
