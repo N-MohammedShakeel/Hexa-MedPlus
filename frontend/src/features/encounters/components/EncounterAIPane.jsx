@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useDispatch } from "react-redux";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
 import StatusBadge from "../../../components/ui/Badge";
@@ -8,6 +9,8 @@ import ExplainabilityModal from "../../explainability/components/ExplainabilityM
 import { Sparkles, FileText, Stethoscope, Database, Layers, Brain, AlertTriangle, Loader2 } from "lucide-react";
 import { clinicalService } from "../../../services/api/clinicalService";
 import { useNavigate } from "react-router-dom";
+import { updatePatient } from "../../../store/slices/patientSlice";
+import { useConfirm } from "../../../contexts/ConfirmContext";
 
 export default function EncounterAIPane({
     aiData, setAiData,
@@ -18,8 +21,46 @@ export default function EncounterAIPane({
     isModalOpen, setIsModalOpen, selectedData
 }) {
     const navigate = useNavigate();
+    const dispatch = useDispatch();
+    const confirm = useConfirm();
     const [isEditingAi, setIsEditingAi] = useState(false);
     const [editableAiData, setEditableAiData] = useState(null);
+    const [isApplyingDiagnosis, setIsApplyingDiagnosis] = useState(false);
+    const [diagnosisApplied, setDiagnosisApplied] = useState(false);
+
+    // Regenerating produces a new diagnosis — don't let a stale "Applied ✓" badge
+    // from the previous result imply the NEW diagnosis was also already applied.
+    React.useEffect(() => {
+        setDiagnosisApplied(false);
+    }, [aiData?.diagnosis?.primaryDiagnosis]);
+
+    const handleApplyDiagnosisToPatient = async () => {
+        setIsApplyingDiagnosis(true);
+        try {
+            // Dispatch the Redux thunk (not clinicalService directly) so Patient
+            // Management's cached patientsList actually reflects the new diagnosis —
+            // calling the service function alone updates the DB but leaves the
+            // Redux cache stale until a full reload resets patientsStatus to 'idle'.
+            // The thunk already toasts success/failure, so no duplicate toast here.
+            await dispatch(updatePatient(patientId, { primaryDiagnosis: aiData.diagnosis.primaryDiagnosis }));
+            setDiagnosisApplied(true);
+        } catch (err) {
+            console.error("Failed to apply diagnosis to patient record:", err);
+        } finally {
+            setIsApplyingDiagnosis(false);
+        }
+    };
+
+    // Regenerating replaces the currently displayed insights (and resets the
+    // "Applied" state on the diagnosis) — cheap to mis-click since it's the same
+    // button that started as "Generate," so gate it once insights already exist.
+    const handleGenerateClick = async () => {
+        if (aiData) {
+            const ok = await confirm("Regenerate AI insights? This replaces the current summary, diagnosis, coding, and pathway suggestions for this encounter.");
+            if (!ok) return;
+        }
+        handleGenerateAI();
+    };
 
     return (
         <div className="w-[420px] bg-white dark:bg-neutral-900 flex flex-col overflow-y-auto">
@@ -52,7 +93,7 @@ export default function EncounterAIPane({
 
             <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900">
                 <button
-                    onClick={handleGenerateAI}
+                    onClick={handleGenerateClick}
                     disabled={aiLoading || ((latestEncounter?.notes || []).length === 0 && (patientNotes || []).length === 0)}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-500 text-white font-semibold rounded-8 hover:bg-primary-600 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-sm"
                 >
@@ -231,9 +272,22 @@ export default function EncounterAIPane({
                                 {/* Primary Diagnosis */}
                                 {aiData?.diagnosis?.primaryDiagnosis && (
                                     <div>
-                                        <h4 className="text-xs font-semibold text-neutral-800 dark:text-neutral-300 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                            <Stethoscope className="w-4 h-4 text-primary-500" /> Primary Diagnosis
-                                        </h4>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h4 className="text-xs font-semibold text-neutral-800 dark:text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+                                                <Stethoscope className="w-4 h-4 text-primary-500" /> Primary Diagnosis
+                                            </h4>
+                                            {patientId && (
+                                                <Button
+                                                    size="sm"
+                                                    variant={diagnosisApplied ? "success" : "secondary"}
+                                                    disabled={isApplyingDiagnosis || diagnosisApplied}
+                                                    onClick={handleApplyDiagnosisToPatient}
+                                                    title="Sets this as the patient's Primary Diagnosis in Patient Management — the physician always confirms, this is never applied automatically"
+                                                >
+                                                    {isApplyingDiagnosis ? "Applying..." : diagnosisApplied ? "Applied ✓" : "Apply to Patient Record"}
+                                                </Button>
+                                            )}
+                                        </div>
                                         <DiagnosisCard
                                             dx={{
                                                 description: aiData.diagnosis.primaryDiagnosis,

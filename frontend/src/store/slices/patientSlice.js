@@ -12,7 +12,7 @@ const mapPatient = (p) => ({
   status: p.status || "Active",
   department: p.department || "General",
   lastVisit: p.admissionDate ? p.admissionDate.split("T")[0] : "N/A",
-  primaryDiagnosis: p.allergies || "None", 
+  primaryDiagnosis: p.primaryDiagnosis || "Pending Review",
   alerts: 0,
   archived: !!p.archived,
   archivedAt: p.archivedAt || null,
@@ -53,6 +53,11 @@ const patientSlice = createSlice({
     },
     removePatientFromList(state, action) {
       state.patientsList = state.patientsList.filter((p) => p.id !== action.payload.id);
+    },
+    updatePatientInList(state, action) {
+      const updated = mapPatient(action.payload);
+      const idx = state.patientsList.findIndex((p) => p.id === updated.id);
+      if (idx !== -1) state.patientsList[idx] = updated;
     },
     addArchivedPatient(state, action) {
       state.archivedList.unshift(mapPatient(action.payload));
@@ -133,6 +138,21 @@ export const addNewPatient = (patientData) => {
       throw error;
     } finally {
       dispatch(patientActions.setLoading(false));
+    }
+  };
+};
+
+export const updatePatient = (id, updates) => {
+  return async (dispatch) => {
+    try {
+      const response = await clinicalService.updatePatient(id, updates);
+      dispatch(patientActions.updatePatientInList(response));
+      toast.success("Patient record updated");
+      return response;
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Failed to update patient";
+      toast.error(errorMsg);
+      throw error;
     }
   };
 };

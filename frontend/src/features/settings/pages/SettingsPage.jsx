@@ -393,8 +393,8 @@ function AppearanceSettings() {
 }
 
 function AiPreferencesSettings() {
-  const [llmModel, setLlmModel] = useState("nvidia");
-  const [visionModel, setVisionModel] = useState("nvidia");
+  const [llmModel, setLlmModel] = useState("aws_nova_pro");
+  const [visionModel, setVisionModel] = useState("aws_nova_pro");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -402,8 +402,8 @@ function AiPreferencesSettings() {
     const fetchPreference = async () => {
       try {
         const data = await clinicalService.getAiPreferences();
-        setLlmModel(data.llm_model || data.model || "nvidia");
-        setVisionModel(data.vision_model || "nvidia");
+        setLlmModel(data.llm_model || data.model || "aws_nova_pro");
+        setVisionModel(data.vision_model || "aws_nova_pro");
       } catch (e) {
         console.error(e);
       } finally {
@@ -448,9 +448,9 @@ function AiPreferencesSettings() {
         </label>
         <div className="grid grid-cols-1 gap-2">
           {[
-            { id: "nvidia", label: "Meta LLaMA 3.1 8B (Default)", desc: "Meta LLaMA 3.1 8B Instruct via NVIDIA NIM" },
-            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "apac.amazon.nova-pro-v1:0 — Multimodal Flagship ($0.80/1M tokens)" },
+            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock) (Default)", desc: "apac.amazon.nova-pro-v1:0 — Multimodal Flagship ($0.80/1M tokens)" },
             { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "apac.amazon.nova-lite-v1:0 — Fast low-cost multimodal LLM ($0.06/1M tokens)" },
+            { id: "nvidia", label: "Meta LLaMA 3.1 8B", desc: "Meta LLaMA 3.1 8B Instruct via NVIDIA NIM" },
             { id: "qwen", label: "Qwen 2.5 14B (Custom via Ngrok)", desc: "Local Qwen 2.5 14B model endpoint" },
           ].map((opt) => (
             <label
@@ -485,9 +485,9 @@ function AiPreferencesSettings() {
         </label>
         <div className="grid grid-cols-1 gap-2">
           {[
-            { id: "nvidia", label: "Meta LLaMA 3.2 90B Vision (Default)", desc: "Llama 3.2 90B Vision Instruct via NVIDIA NIM" },
-            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock)", desc: "apac.amazon.nova-pro-v1:0 — Flagship multimodal document & imaging analysis" },
+            { id: "aws_nova_pro", label: "Amazon Nova Pro (AWS Bedrock) (Default)", desc: "apac.amazon.nova-pro-v1:0 — Flagship multimodal document & imaging analysis" },
             { id: "aws_nova", label: "Amazon Nova Lite (AWS Bedrock)", desc: "apac.amazon.nova-lite-v1:0 — Ultra low-cost OCR & imaging ($0.06/1M tokens)" },
+            { id: "nvidia", label: "Meta LLaMA 3.2 90B Vision", desc: "Llama 3.2 90B Vision Instruct via NVIDIA NIM" },
           ].map((opt) => (
             <label
               key={opt.id}

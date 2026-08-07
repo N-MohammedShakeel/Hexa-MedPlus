@@ -38,6 +38,11 @@ public class ClinicalService {
                 .lastName(entity.getLastName())
                 .dob(entity.getDob())
                 .gender(entity.getGender())
+                .department(entity.getDepartment())
+                .primaryDiagnosis(entity.getPrimaryDiagnosis())
+                .status(entity.getStatus())
+                .room(entity.getRoom())
+                .admissionDate(entity.getAdmissionDate())
                 .allergies(allergies)
                 .activeMedications(meds)
                 .archived(entity.isArchived())
@@ -54,6 +59,11 @@ public class ClinicalService {
                 .lastName(request.getLastName())
                 .dob(request.getDob())
                 .gender(request.getGender())
+                .department(request.getDepartment())
+                .primaryDiagnosis(request.getPrimaryDiagnosis())
+                .status(request.getStatus())
+                .room(request.getRoom())
+                .admissionDate(request.getAdmissionDate())
                 .allergies(String.join("|", request.getAllergies()))
                 .activeMedications(String.join("|", request.getActiveMedications()))
                 .build();
@@ -97,6 +107,26 @@ public class ClinicalService {
                             .orElseThrow(() -> new NoSuchElementException("Patient not found: " + id));
                     entity.setArchived(true);
                     entity.setArchivedAt(LocalDateTime.now());
+                    return patientRepository.save(entity);
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(this::mapToResponse);
+    }
+
+    // MONO: Partial update — currently Department/Primary Diagnosis only. Physician-edited
+    // directly in Patient Management, or applied from an AI-suggested diagnosis via
+    // "Apply to Patient Record" in the Encounter AI panel — either way, a human always
+    // triggers this; nothing writes here automatically.
+    public Mono<PatientDto.Response> updatePatient(String id, PatientDto.UpdateRequest request) {
+        return Mono.fromCallable(() -> {
+                    PatientEntity entity = patientRepository.findById(UUID.fromString(id))
+                            .orElseThrow(() -> new NoSuchElementException("Patient not found: " + id));
+                    if (request.getDepartment() != null) {
+                        entity.setDepartment(request.getDepartment());
+                    }
+                    if (request.getPrimaryDiagnosis() != null) {
+                        entity.setPrimaryDiagnosis(request.getPrimaryDiagnosis());
+                    }
                     return patientRepository.save(entity);
                 })
                 .subscribeOn(Schedulers.boundedElastic())

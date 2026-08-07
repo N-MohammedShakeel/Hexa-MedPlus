@@ -1,5 +1,6 @@
 import json
 import asyncio
+import uuid
 import httpx
 import fitz
 from aiokafka import AIOKafkaConsumer
@@ -13,6 +14,7 @@ from app.utils.logger import log_info, log_error
 
 from app.api.vision import analyze_image_with_vision_ai, structure_lab_report_with_llama, structure_clinical_note_with_llama
 from app.utils.blur_detector import check_image_blur
+from app.utils.identity_matcher import check_patient_identity
 
 # File extensions treated as images for Vision AI processing
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.dcm', '.dicom'}
@@ -78,7 +80,7 @@ def _generate_ai_heading(analysis_result: dict, doc_type: str) -> str:
         return 'Imaging Study'
     return 'Clinical Document'
 
-def _build_analysis_fields(file_key: str, mrn: str, doc_type: str, analysis_result: dict, native_text: str = "", document_id: str = None) -> dict:
+def _build_analysis_fields(file_key: str, mrn: str, doc_type: str, analysis_result: dict, native_text: str = "", document_id: str = None, custom_doc_name: str = None) -> dict:
     if 'raw_text' in analysis_result:
         ocr = {'extracted_text': analysis_result['raw_text']}
         analysis_result['recommendation'] = "SYSTEM WARNING: The AI model failed to output structured JSON. The raw markdown output is provided below for review."
@@ -96,7 +98,11 @@ def _build_analysis_fields(file_key: str, mrn: str, doc_type: str, analysis_resu
         'overall_quality': quality.get('overall_quality', ''),
         'readability_confidence': quality.get('readability_confidence'),
         'artifacts': quality.get('artifacts', []),
-        'limitations': analysis_result.get('limitations', [])
+        'limitations': analysis_result.get('limitations', []),
+        # Whatever identity fields Vision AI found printed on the document itself —
+        # merged with LLaMA structuring's own read further down, so either pass can
+        # supply the field the other missed. Used by the identity mismatch check.
+        'patient_info': analysis_result.get('patient_info', {}) or {}
     }
     return {
         'file_key': file_key,
@@ -105,7 +111,7 @@ def _build_analysis_fields(file_key: str, mrn: str, doc_type: str, analysis_resu
         'extracted_text': ocr.get('extracted_text', ''),
         'report_summary': analysis_result.get('recommendation', ''),
         'native_extracted_text': native_text,
-        'ai_heading': _generate_ai_heading(analysis_result, doc_type),
+        'ai_heading': custom_doc_name if (doc_type == 'OTHER' and custom_doc_name) else _generate_ai_heading(analysis_result, doc_type),
         'clinical_findings': findings if findings else [],
         'image_metadata': image_meta,
         'blurry_regions': ocr.get('blurry_text_regions', []),
@@ -320,25 +326,16 @@ async def consume_documents():
                 doc_type = data.get('documentType', '')
                 file_url = data.get('fileUrl')
                 document_id = data.get('documentId')
+                custom_doc_name = data.get('customDocName')
 
                 # ── 1. RAG ingestion ──────────────────────────────────────
+                # Note: patient-note creation for CLINICAL_NOTE/OTHER documents no longer
+                # happens here (or anywhere else in this file) — it happens exactly once,
+                # gated on the doctor's "Verify" click, in vision.py's update_vision_result.
+                # That's the only reliable trigger point across image/PDF/text sources and
+                # avoids the duplicate/premature notes the old scattered auto-pushes caused.
                 if text and mrn:
                     await asyncio.to_thread(ingest_document, text, doc_type, mrn, file_key)
-                    
-                    if doc_type == 'CLINICAL_NOTE':
-                        try:
-                            # Use api-gateway or direct internal docker URL if available, fallback to localhost
-                            base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
-                            async with httpx.AsyncClient(timeout=10.0) as client:
-                                payload = {
-                                    "tag": "CLINICAL_NOTE",
-                                    "content": text
-                                }
-                                resp = await client.post(f"{base_url}/api/clinical/patients/{mrn}/notes", json=payload)
-                                resp.raise_for_status()
-                                log_info(f"Successfully auto-saved CLINICAL_NOTE for MRN {mrn}")
-                        except Exception as e:
-                            log_error(f"Failed to auto-save CLINICAL_NOTE to patient notes: {e}")
 
                 if not mrn:
                     continue
@@ -346,9 +343,13 @@ async def consume_documents():
                 # ── 2. Vision AI for Image files ──────────────────────────
                 if _is_image_document(file_key, doc_type):
                     try:
+                        # This single consumer processes one Kafka message at a time, so
+                        # a document only starts getting real AI attention once this fires —
+                        # until then it's still queued behind whatever came before it.
+                        await _update_document_status(file_key, "AI_PROCESSING")
                         vision_result = await _call_vision_api(file_key, file_url, doc_type)
                         if vision_result and 'api_error' not in vision_result:
-                            fields = _build_analysis_fields(file_key, mrn, doc_type, vision_result, text, document_id)
+                            fields = _build_analysis_fields(file_key, mrn, doc_type, vision_result, text, document_id, custom_doc_name)
                             if 'Lab Report' in fields['ai_heading'] or doc_type == 'LAB_REPORT':
                                 log_info(f"Structuring Lab Report for {file_key}...")
                                 structured_data = await structure_lab_report_with_llama(fields['extracted_text'])
@@ -358,12 +359,22 @@ async def consume_documents():
                                         fields['ai_heading'] = structured_data.get('heading')
                                     fields['report_summary'] = structured_data.get('summary', '')
                                     if structured_data.get('patient_info'):
-                                        fields['image_metadata'] = fields.get('image_metadata', {})
-                                        fields['image_metadata']['patient_info'] = structured_data.get('patient_info')
+                                        # Merge rather than overwrite — Vision AI's own read of the
+                                        # image (already in fields['image_metadata']['patient_info']
+                                        # via _build_analysis_fields) may have caught a field LLaMA's
+                                        # OCR-text-only pass missed, or vice versa.
+                                        existing_info = dict(fields.get('image_metadata', {}).get('patient_info') or {})
+                                        for k, v in structured_data['patient_info'].items():
+                                            if v and not existing_info.get(k):
+                                                existing_info[k] = v
+                                        fields['image_metadata']['patient_info'] = existing_info
 
                             # needs_blur_annotation/document_id are real columns now — keep
                             # them in `fields` so they're actually persisted below.
                             needs_blur = fields.get('needs_blur_annotation', False)
+                            identity_result = await check_patient_identity(mrn, fields['image_metadata'].get('patient_info', {}))
+                            fields['identity_check_status'] = identity_result['status']
+                            fields['identity_mismatches'] = identity_result['mismatches']
                             async with AsyncSessionLocal() as session:
                                 analysis = DocumentAnalysisEntity(**fields)
                                 session.add(analysis)
@@ -373,21 +384,6 @@ async def consume_documents():
                             # Update document status based on blur detection result
                             new_doc_status = 'BLUR_DETECTED' if needs_blur else 'COMPLETED'
                             await _update_document_status(file_key, new_doc_status)
-
-                            # Auto-save non-imaging docs to patient notes after Vision AI processing
-                            if doc_type not in ('LAB_REPORT', 'IMAGING', 'XRAY', 'MRI', 'CT_SCAN', 'DICOM') and fields.get('report_summary') and mrn:
-                                try:
-                                    base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
-                                    tag = 'CLINICAL_NOTE' if doc_type == 'CLINICAL_NOTE' else (file_key.split('-', 1)[-1] if '-' in file_key else file_key)
-                                    note_payload = {"tag": tag, "content": fields['report_summary']}
-                                    async with httpx.AsyncClient(timeout=10.0) as client:
-                                        resp = await client.post(base_url + "/api/clinical/patients/" + mrn + "/notes", json=note_payload)
-                                        if resp.status_code < 300:
-                                            log_info("Auto-saved " + doc_type + " to patient notes for MRN " + mrn)
-                                        else:
-                                            log_error("Auto-save note failed: " + resp.text)
-                                except Exception as note_err:
-                                    log_error("Auto-save note exception: " + repr(note_err))
                         else:
                             log_error(f"Vision AI returned no usable result for {file_key}: {vision_result}")
                             await _update_document_status(file_key, "FAILED")
@@ -401,18 +397,26 @@ async def consume_documents():
                     any_blur = False
                     pdf_failed = False
                     try:
+                        await _update_document_status(file_key, "AI_PROCESSING")
                         async for page_num, total_pages, result in _process_vision_api_pdf_stream(file_key, file_url):
                             async with AsyncSessionLocal() as session:
                                 if page_num == 0:
-                                    # Create initial DB record
-                                    fields = _build_analysis_fields(file_key, mrn, doc_type, {}, text, document_id)
+                                    # Create initial DB record. The id is generated here in
+                                    # Python (not left to the ORM's client-side default) because
+                                    # reading analysis.id right after session.add() — before a
+                                    # flush/commit actually runs the default — returns None. That
+                                    # used to make every later session.get(..., None) look-up fail
+                                    # silently (a SAWarning, and `existing` always None), so no PDF
+                                    # ever got its later pages merged in.
+                                    fields = _build_analysis_fields(file_key, mrn, doc_type, {}, text, document_id, custom_doc_name)
+                                    fields['id'] = str(uuid.uuid4())
                                     fields['image_metadata']['total_pages'] = total_pages
                                     fields['image_metadata']['processed_pages'] = 0
                                     fields['needs_blur_annotation'] = False
                                     analysis = DocumentAnalysisEntity(**fields)
                                     session.add(analysis)
-                                    analysis_id = analysis.id
                                     await session.commit()
+                                    analysis_id = fields['id']
                                     log_info(f"Created new PDF page analysis record: {analysis_id}")
                                 elif result and 'api_error' not in result:
                                     # Update existing DB record
@@ -452,6 +456,17 @@ async def consume_documents():
                                             meta['modality'] = model_meta.get('modality', '')
                                             meta['body_part_or_document_type'] = model_meta.get('body_part_or_document_type', '')
 
+                                        # Merge this page's identity fields in — only filling whatever
+                                        # earlier pages didn't already find, since a multi-page PDF's
+                                        # patient header may only appear on page 1.
+                                        page_patient_info = result.get('patient_info') or {}
+                                        if page_patient_info:
+                                            existing_info = dict(meta.get('patient_info') or {})
+                                            for k, v in page_patient_info.items():
+                                                if v and not existing_info.get(k):
+                                                    existing_info[k] = v
+                                            meta['patient_info'] = existing_info
+
                                         existing.image_metadata = meta
                                         existing.needs_blur_annotation = any_blur
                                         await session.commit()
@@ -466,20 +481,32 @@ async def consume_documents():
                     elif pdf_failed:
                         await _update_document_status(file_key, "FAILED")
                     else:
+                        # Run the identity check once, after all pages' patient_info has merged in.
+                        async with AsyncSessionLocal() as session:
+                            existing = await session.get(DocumentAnalysisEntity, analysis_id)
+                            if existing:
+                                identity_result = await check_patient_identity(mrn, (existing.image_metadata or {}).get('patient_info', {}))
+                                existing.identity_check_status = identity_result['status']
+                                existing.identity_mismatches = identity_result['mismatches']
+                                await session.commit()
                         await _update_document_status(file_key, "BLUR_DETECTED" if any_blur else "COMPLETED")
 
                 # ── 4. Text/Office documents (TXT, DOCX, CSV, etc.) ──────────
                 elif _is_text_document(file_key) and text and mrn:
                     log_info(f"Text document detected: {file_key} (type={doc_type}). Running LLaMA structuring...")
                     try:
+                        await _update_document_status(file_key, "AI_PROCESSING")
                         if doc_type == 'LAB_REPORT':
                             structured = await structure_lab_report_with_llama(text)
                         else:
                             structured = await structure_clinical_note_with_llama(text)
 
-                        ai_heading = (structured.get('heading') if structured else None) or f"{doc_type.replace('_', ' ').title()} — {file_key.rsplit('-', 1)[-1] if '-' in file_key else file_key}"
+                        ai_heading = (structured.get('heading') if structured else None) or custom_doc_name or f"{doc_type.replace('_', ' ').title()} — {file_key.rsplit('-', 1)[-1] if '-' in file_key else file_key}"
                         findings = structured.get('lab_findings', []) if doc_type == 'LAB_REPORT' else []
                         summary = structured.get('summary', '') if structured else ''
+                        patient_info = (structured.get('patient_info') or {}) if structured else {}
+
+                        identity_result = await check_patient_identity(mrn, patient_info)
 
                         fields = {
                             'file_key': file_key,
@@ -490,12 +517,14 @@ async def consume_documents():
                             'report_summary': summary,
                             'ai_heading': ai_heading,
                             'clinical_findings': findings,
-                            'image_metadata': {},
+                            'image_metadata': {'patient_info': patient_info},
                             'blurry_regions': [],
                             'blur_doctor_inputs': [],
                             'image_width': None,
                             'image_height': None,
                             'model_used': 'text-structuring-llama',
+                            'identity_check_status': identity_result['status'],
+                            'identity_mismatches': identity_result['mismatches'],
                         }
                         async with AsyncSessionLocal() as session:
                             analysis = DocumentAnalysisEntity(**fields)
@@ -503,23 +532,6 @@ async def consume_documents():
                             await session.commit()
                         log_info(f"Text document analysis saved for {file_key} (MRN: {mrn})")
                         await _update_document_status(file_key, "COMPLETED")
-
-                        # Auto-save non-lab text docs to patient notes, mirroring the image/PDF pipelines.
-                        # CLINICAL_NOTE is excluded — it's already auto-saved (with the raw extracted
-                        # text) by the RAG-ingestion step above, before this branch runs.
-                        if doc_type not in ('LAB_REPORT', 'CLINICAL_NOTE') and summary:
-                            try:
-                                base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
-                                tag = 'CLINICAL_NOTE' if doc_type == 'CLINICAL_NOTE' else (file_key.split('-', 1)[-1] if '-' in file_key else file_key)
-                                note_payload = {"tag": tag, "content": summary}
-                                async with httpx.AsyncClient(timeout=10.0) as client:
-                                    resp = await client.post(base_url + "/api/clinical/patients/" + mrn + "/notes", json=note_payload)
-                                    if resp.status_code < 300:
-                                        log_info("Auto-saved " + doc_type + " to patient notes for MRN " + mrn)
-                                    else:
-                                        log_error("Auto-save note failed: " + resp.text)
-                            except Exception as note_err:
-                                log_error("Auto-save note exception: " + repr(note_err))
                     except Exception as te:
                         log_error(f"Text document structuring failed for {file_key}: {te}")
                         await _update_document_status(file_key, "FAILED")

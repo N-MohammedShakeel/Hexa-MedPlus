@@ -65,10 +65,10 @@ export default function EncounterLabsTab({
                                 <CheckCircle className="w-3 h-3" /> Verify
                             </button>
                         )}
-                        <button onClick={(e) => handleStartEditVision(rec, e)} className="p-1.5 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-6 transition-colors" title="Edit JSON">
+                        <button onClick={(e) => handleStartEditVision(rec, e)} className="p-1.5 text-neutral-600 dark:text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-6 transition-colors" title="Edit JSON">
                             <Edit2 className="w-4 h-4" />
                         </button>
-                        <button onClick={(e) => handleDeleteVisionRecord(rec.id, e)} className="p-1.5 text-neutral-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 rounded-6 transition-colors" title="Delete">
+                        <button onClick={(e) => handleDeleteVisionRecord(rec.id, e)} className="p-1.5 text-neutral-600 dark:text-slate-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 rounded-6 transition-colors" title="Delete">
                             <Trash2 className="w-4 h-4" />
                         </button>
                     </div>

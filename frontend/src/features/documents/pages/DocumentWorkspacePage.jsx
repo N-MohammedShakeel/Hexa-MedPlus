@@ -10,12 +10,14 @@ import BlurAnnotationModal from '../components/BlurAnnotationModal';
 import DocumentViewModal from '../components/DocumentViewModal';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 import { notifyError } from '../../../common/utils/toast';
+import { updateBatchPhaseByFileKey } from '../../../store/slices/uploadSlice';
 
 export default function DocumentWorkspacePage() {
   const dispatch = useDispatch();
   const allPatients = useSelector(selectAllPatients);
   const patientStatus = useSelector(selectPatientStatus);
   const [selectedCategory, setSelectedCategory] = useState('All Documents');
+  const [patientSearch, setPatientSearch] = useState('');
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -77,12 +79,19 @@ export default function DocumentWorkspacePage() {
   };
 
   // Called from BlurAnnotationModal's reanalyze async call completion
-  const handleAnalysisComplete = (fileKey) => {
+  const handleAnalysisComplete = (fileKey, success = true) => {
     setReanalyzingFileKeys(prev => {
       const next = new Set(prev);
       next.delete(fileKey);
       return next;
     });
+    // If this document also has an entry in the Upload Progress panel (e.g. the
+    // doctor resolved the blur annotation without leaving the page), reflect the
+    // real outcome there too — its own status polling already stopped the
+    // moment it first hit BLUR_DETECTED, so nothing else will update it.
+    if (fileKey) {
+      dispatch(updateBatchPhaseByFileKey({ fileKey, phase: success ? 'done' : 'failed' }));
+    }
     // Refresh document list so status column reflects COMPLETED
     refreshDocuments();
   };
@@ -143,26 +152,51 @@ export default function DocumentWorkspacePage() {
     }
   }, [patientStatus, dispatch]);
 
+  // Guideline/protocol uploads live in the Clinical Protocols workflow — they
+  // aren't patient documents and shouldn't show up in this workspace's list.
+  // Archived patients' documents are also excluded — `allPatients` (selectAllPatients)
+  // only ever contains non-archived patients (clinicalService.getPatients() defaults
+  // to archived=false), so this is a reliable active-patient membership check.
+  const mapDocs = (data, visionByFileKey) => data
+    .filter(doc => doc.documentType !== 'GUIDELINE' && allPatients.some(p => p.mrn === doc.targetMrn))
+    .map(doc => {
+    const vision = visionByFileKey.get(doc.fileKey);
+    return {
+      id: doc.id,
+      name: doc.fileName,
+      fileKey: doc.fileKey,
+      type: doc.documentType,
+      size: doc.fileSize ? (doc.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown',
+      status: doc.status,
+      statusColor: doc.status === 'COMPLETED' ? 'success' : doc.status === 'FAILED' ? 'danger' : 'info',
+      category: doc.category,
+      date: new Date(doc.uploadedAt).toISOString().split('T')[0],
+      mrn: doc.targetMrn,
+      patientGender: doc.patientGender || '',
+      aiVerified: false,
+      verified: vision?.verified || false,
+      identityMismatch: (vision?.identityCheckStatus === 'mismatch' && !vision?.identityConfirmed) || false,
+    };
+  });
+
+  // Small, best-effort join against ai-service's vision results (verified status,
+  // identity mismatch flag) so the document list can show both without opening
+  // each document — failure here shouldn't block the document list from loading.
+  const fetchVisionResultsMap = async () => {
+    try {
+      const { data } = await axiosInstance.get('/api/ai/vision/results');
+      return new Map(data.map(r => [r.fileKey, { verified: r.verified, identityCheckStatus: r.identityCheckStatus, identityConfirmed: r.identityConfirmed }]));
+    } catch (error) {
+      console.error("Failed to fetch vision results:", error);
+      return new Map();
+    }
+  };
+
   React.useEffect(() => {
     const fetchDocs = async () => {
       try {
-        const data = await clinicalService.getDocuments();
-        // Guideline/protocol uploads live in the Clinical Protocols workflow — they
-        // aren't patient documents and shouldn't show up in this workspace's list.
-        setDocuments(data.filter(doc => doc.documentType !== 'GUIDELINE').map(doc => ({
-          id: doc.id,
-          name: doc.fileName,
-          fileKey: doc.fileKey,
-          type: doc.documentType,
-          size: doc.fileSize ? (doc.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown',
-          status: doc.status,
-          statusColor: doc.status === 'COMPLETED' ? 'success' : doc.status === 'FAILED' ? 'danger' : 'info',
-          category: doc.category,
-          date: new Date(doc.uploadedAt).toISOString().split('T')[0],
-          mrn: doc.targetMrn,
-          patientGender: doc.patientGender || '',
-          aiVerified: false
-        })));
+        const [data, visionMap] = await Promise.all([clinicalService.getDocuments(), fetchVisionResultsMap()]);
+        setDocuments(mapDocs(data, visionMap));
       } catch (error) {
         console.error("Failed to fetch documents:", error);
         notifyError('Failed to load documents.');
@@ -175,21 +209,8 @@ export default function DocumentWorkspacePage() {
 
   const refreshDocuments = async () => {
     try {
-      const data = await clinicalService.getDocuments();
-      setDocuments(data.filter(doc => doc.documentType !== 'GUIDELINE').map(doc => ({
-        id: doc.id,
-        name: doc.fileName,
-        fileKey: doc.fileKey,
-        type: doc.documentType,
-        size: doc.fileSize ? (doc.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Unknown',
-        status: doc.status,
-        statusColor: doc.status === 'COMPLETED' ? 'success' : doc.status === 'FAILED' ? 'danger' : 'info',
-        category: doc.category,
-        date: new Date(doc.uploadedAt).toISOString().split('T')[0],
-        mrn: doc.targetMrn,
-        patientGender: doc.patientGender || '',
-        aiVerified: false
-      })));
+      const [data, visionMap] = await Promise.all([clinicalService.getDocuments(), fetchVisionResultsMap()]);
+      setDocuments(mapDocs(data, visionMap));
     } catch (error) {
       console.error("Failed to refresh documents:", error);
     }
@@ -197,7 +218,7 @@ export default function DocumentWorkspacePage() {
 
   // Auto-refresh document list if any document is processing or blur_detected
   React.useEffect(() => {
-    const hasPendingDocs = documents.some(doc => doc.status === 'PROCESSING' || doc.status === 'BLUR_DETECTED' || doc.status === 'REQUIRES_VERIFICATION');
+    const hasPendingDocs = documents.some(doc => ['PROCESSING', 'AI_PROCESSING', 'BLUR_DETECTED', 'REQUIRES_VERIFICATION'].includes(doc.status));
     if (!hasPendingDocs) return;
 
     const interval = setInterval(() => {
@@ -229,17 +250,27 @@ export default function DocumentWorkspacePage() {
   };
 
   const filteredDocs = documents.filter(doc => {
-    if (selectedCategory === 'All Documents') return true;
-    return doc.category === selectedCategory;
+    if (selectedCategory !== 'All Documents' && doc.category !== selectedCategory) return false;
+    if (patientSearch.trim()) {
+      const term = patientSearch.trim().toLowerCase();
+      const patient = allPatients.find(p => p.mrn === doc.mrn);
+      const matchesMrn = doc.mrn?.toLowerCase().includes(term);
+      const matchesName = patient?.name?.toLowerCase().includes(term);
+      if (!matchesMrn && !matchesName) return false;
+    }
+    return true;
   });
 
 
   return (
     <div className="flex h-[calc(100vh-64px)] animate-fade-in">
       {/* Left Sidebar */}
-      <DocumentFilters 
-        selectedCategory={selectedCategory} 
-        setSelectedCategory={setSelectedCategory} 
+      <DocumentFilters
+        selectedCategory={selectedCategory}
+        setSelectedCategory={setSelectedCategory}
+        patientSearch={patientSearch}
+        setPatientSearch={setPatientSearch}
+        patients={allPatients}
       />
 
       {/* Main Workspace */}

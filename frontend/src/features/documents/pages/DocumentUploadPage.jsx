@@ -278,7 +278,7 @@ export default function DocumentUploadPage() {
                                         </p>
                                     </div>
                                     <StatusBadge status={doc.status === 'COMPLETED' ? 'success' : 'warning'} label={doc.status} />
-                                    <button onClick={() => handleDelete(doc.id)} className="p-1.5 text-neutral-400 hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-500/10 rounded-6 transition-colors">
+                                    <button onClick={() => handleDelete(doc.id)} className="p-1.5 text-neutral-600 dark:text-slate-400 hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-500/10 rounded-6 transition-colors">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>

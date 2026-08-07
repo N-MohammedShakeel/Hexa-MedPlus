@@ -31,6 +31,9 @@ async def startup():
         for stmt in [
             "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS needs_blur_annotation BOOLEAN DEFAULT FALSE",
             "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS document_id VARCHAR",
+            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_check_status VARCHAR",
+            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_mismatches JSON",
+            "ALTER TABLE document_analysis ADD COLUMN IF NOT EXISTS identity_confirmed BOOLEAN DEFAULT FALSE",
             "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR NOT NULL DEFAULT 'general'",
             "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_id VARCHAR",
             "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_label VARCHAR",

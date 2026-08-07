@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, AlertTriangle, CheckCircle, Trash2, FileText } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, Trash2, FileText, Clock } from 'lucide-react';
 import Card from '../../../components/ui/Card';
 import StatusBadge from '../../../components/ui/Badge';
 
@@ -28,6 +28,7 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                 <th className="text-left px-4 py-2 text-xs font-medium text-neutral-800 dark:text-slate-300">Patient MRN</th>
                 <th className="text-left px-4 py-2 text-xs font-medium text-neutral-800 dark:text-slate-300">Type</th>
                 <th className="text-left px-4 py-2 text-xs font-medium text-neutral-800 dark:text-slate-300">Status</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-neutral-800 dark:text-slate-300">Verified</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-neutral-800 dark:text-slate-300">Actions</th>
               </tr>
             </thead>
@@ -37,11 +38,9 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                   key={doc.id}
                   onClick={() => handleRowClick(doc)}
                   className={`border-b border-neutral-400 dark:border-slate-700/50 cursor-pointer hover:shadow-md transition-shadow ${
-                    doc.status === 'REQUIRES_VERIFICATION'
-                      ? 'bg-info-50 dark:bg-info-900/10'
-                      : doc.status === 'COMPLETED'
+                    doc.status === 'COMPLETED'
                       ? 'bg-white dark:bg-slate-900 hover:bg-neutral-50 dark:hover:bg-slate-800'
-                      : doc.status === 'PROCESSING'
+                      : ['PROCESSING', 'AI_PROCESSING', 'REQUIRES_VERIFICATION'].includes(doc.status)
                       ? 'bg-white dark:bg-slate-900 hover:bg-neutral-50 dark:hover:bg-slate-800'
                       : doc.status === 'FAILED'
                       ? 'bg-danger-50 dark:bg-danger-900/10 opacity-90'
@@ -50,11 +49,11 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {doc.status === 'REQUIRES_VERIFICATION' && (
-                        <div className="w-3 h-3 bg-primary-500 rounded-full" />
-                      )}
                       {doc.status === 'FAILED' && (
                         <AlertTriangle className="w-4 h-4 text-danger-500" />
+                      )}
+                      {doc.identityMismatch && (
+                        <AlertTriangle className="w-4 h-4 text-danger-500" title="Patient identity mismatch detected — click to review" />
                       )}
                       <span className="text-sm text-neutral-900 dark:text-slate-200 font-medium">
                         {doc.name}
@@ -72,36 +71,46 @@ export default function DocumentListTable({ selectedCategory, filteredDocs, load
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {doc.status === 'PROCESSING' ? (
+                    {doc.status === 'AI_PROCESSING' ? (
                       <div className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
                         <span className="text-xs font-semibold text-primary-500 dark:text-primary-400">
                           AI Analysis Running...
                         </span>
                       </div>
-                    ) : doc.status === 'REQUIRES_VERIFICATION' ? (
-                      <StatusBadge status="danger" label="Verify Now" />
+                    ) : ['PROCESSING', 'REQUIRES_VERIFICATION', 'PENDING'].includes(doc.status) ? (
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-neutral-400" />
+                        <span className="text-xs font-semibold text-neutral-500 dark:text-slate-400">Pending</span>
+                      </div>
                     ) : doc.status === 'COMPLETED' ? (
                       <StatusBadge status="success" label="Completed" />
                     ) : doc.status === 'FAILED' ? (
                       <StatusBadge status="danger" label="Failed" />
                     ) : doc.status === 'BLUR_DETECTED' ? (
                       <StatusBadge status="warning" label="Blur Detected" />
-                    ) : doc.status === 'PENDING' ? (
-                      <StatusBadge status="neutral" label="Pending" />
                     ) : (
                       <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-2 text-xs font-medium text-neutral-600 dark:text-slate-400">{doc.status}</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {doc.status !== 'COMPLETED' ? (
+                      <StatusBadge status="neutral" label="Pending" />
+                    ) : doc.verified ? (
+                      <StatusBadge status="success" label="Verified" />
+                    ) : (
+                      <StatusBadge status="warning" label="Verify Now" />
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }} className="text-neutral-400 hover:text-danger-500 transition-colors p-1" title="Delete Document">
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }} className="text-neutral-600 dark:text-slate-400 hover:text-danger-500 transition-colors p-1" title="Delete Document">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan="5" className="px-4 py-8 text-center text-sm text-neutral-600 dark:text-slate-400">
+                  <td colSpan="6" className="px-4 py-8 text-center text-sm text-neutral-600 dark:text-slate-400">
                     No documents found in this category.
                   </td>
                 </tr>

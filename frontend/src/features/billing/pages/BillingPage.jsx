@@ -121,6 +121,7 @@ export default function BillingPage() {
             placeholder="Search patient name or MRN..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
+            onClear={() => setSearchTerm('')}
             leftIcon={Search}
           />
         </div>

@@ -92,26 +92,48 @@ export default function Sidebar({ collapsed, onToggle }) {
         <div
           className={cn(
             "flex items-center gap-3",
-            collapsed && "justify-center",
+            collapsed ? "justify-center" : "justify-between",
           )}
         >
-          <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-12 flex items-center justify-center shrink-0 shadow-inner border-t border-primary-300">
-            <div className="flex items-start">
-              <span className="text-white text-xl font-black font-sans leading-none tracking-tighter">H</span>
-              <span className="text-primary-100 text-[12px] font-bold ml-0.5 mt-0.5 leading-none">+</span>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-12 flex items-center justify-center shrink-0 shadow-inner border-t border-primary-300">
+              <div className="flex items-start">
+                <span className="text-white text-xl font-black font-sans leading-none tracking-tighter">H</span>
+                <span className="text-primary-100 text-[12px] font-bold ml-0.5 mt-0.5 leading-none">+</span>
+              </div>
             </div>
+            {!collapsed && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-lg font-bold text-primary-600 dark:text-primary-400 leading-tight">
+                  Hexa MedPlus
+                </span>
+                <span className="text-xs font-semibold text-neutral-800 dark:text-slate-400">
+                  Clinical Assistant
+                </span>
+              </div>
+            )}
           </div>
+          {/* Collapse toggle — kept fully inside the sidebar's own width (no absolute
+              offset past its edge) so it never adds extra page width/horizontal scroll. */}
           {!collapsed && (
-            <div className="flex flex-col gap-0.5">
-              <span className="text-lg font-bold text-primary-600 dark:text-primary-400 leading-tight">
-                Hexa MedPlus
-              </span>
-              <span className="text-xs font-semibold text-neutral-800 dark:text-slate-400">
-                Clinical Assistant
-              </span>
-            </div>
+            <button
+              onClick={onToggle}
+              className="p-1.5 rounded-full text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+              title="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
           )}
         </div>
+        {collapsed && (
+          <button
+            onClick={onToggle}
+            className="mt-3 w-full flex items-center justify-center p-1.5 rounded-6 text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800 transition-colors"
+            title="Expand sidebar"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -160,18 +182,6 @@ export default function Sidebar({ collapsed, onToggle }) {
           )}
         </div>
       </div>
-
-      {/* Collapse Toggle */}
-      <button
-        onClick={onToggle}
-        className="absolute -right-3 top-20 w-6 h-6 bg-white dark:bg-slate-800 border border-neutral-500 dark:border-slate-700 rounded-full flex items-center justify-center shadow-sm hover:bg-neutral-50 dark:hover:bg-slate-700"
-      >
-        {collapsed ? (
-          <ChevronRight className="w-3 h-3 text-neutral-600 dark:text-slate-400" />
-        ) : (
-          <ChevronLeft className="w-3 h-3 text-neutral-600 dark:text-slate-400" />
-        )}
-      </button>
     </aside>
   );
 }

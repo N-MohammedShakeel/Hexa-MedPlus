@@ -134,7 +134,7 @@ export default function BatchUploadWizard({ isOpen, onClose, existingProtocols =
               {items.map((it) => (
                 <div key={it.localId} className="flex items-center justify-between px-3 py-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-6 text-xs">
                   <span className="flex items-center gap-2 text-neutral-700 dark:text-neutral-300"><FileText className="w-3.5 h-3.5" /> {it.file.name}</span>
-                  <button onClick={() => removeItem(it.localId)} className="text-neutral-400 hover:text-danger-500"><X className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => removeItem(it.localId)} className="text-neutral-600 dark:text-slate-400 hover:text-danger-500"><X className="w-3.5 h-3.5" /></button>
                 </div>
               ))}
             </div>
@@ -162,7 +162,7 @@ export default function BatchUploadWizard({ isOpen, onClose, existingProtocols =
                   <span className="flex items-center gap-2 text-sm font-semibold text-neutral-800 dark:text-neutral-200">
                     <FileText className="w-4 h-4 text-primary-500" /> {it.file.name}
                   </span>
-                  <button onClick={() => removeItem(it.localId)} className="text-neutral-400 hover:text-danger-500">
+                  <button onClick={() => removeItem(it.localId)} className="text-neutral-600 dark:text-slate-400 hover:text-danger-500">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

@@ -92,13 +92,21 @@ function NewChatModal({ onClose, onCreate }) {
 
         {step === 'patient' && (
           <div className="p-5 space-y-3">
-            <input
-              autoFocus
-              value={patientQuery}
-              onChange={e => setPatientQuery(e.target.value)}
-              placeholder="Search patient by name or MRN..."
-              className="w-full px-3 py-2 border border-neutral-300 dark:border-slate-600 rounded-6 text-sm bg-white dark:bg-slate-800 text-neutral-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
+            <div className="relative">
+              <input
+                autoFocus
+                value={patientQuery}
+                onChange={e => setPatientQuery(e.target.value)}
+                placeholder="Search patient by name or MRN..."
+                className="w-full px-3 py-2 pr-8 border border-neutral-300 dark:border-slate-600 rounded-6 text-sm bg-white dark:bg-slate-800 text-neutral-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              {patientQuery && (
+                <button type="button" onClick={() => setPatientQuery('')} title="Clear"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
             <div className="max-h-64 overflow-y-auto space-y-1">
               {loadingPatients ? (
                 <p className="text-xs text-neutral-400 text-center py-4">Loading patients...</p>

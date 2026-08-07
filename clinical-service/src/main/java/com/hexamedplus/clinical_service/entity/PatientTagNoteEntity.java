@@ -39,6 +39,22 @@ public class PatientTagNoteEntity {
     @Column(name = "status", length = 50)
     private String status;
 
+    /**
+     * fileKey of the source document (ai-service), when this note was generated from
+     * a verified upload. Lets a re-verified/edited document update its existing note
+     * instead of creating a duplicate — see PatientTagNoteService.createNote.
+     */
+    @Column(name = "document_file_key")
+    private String documentFileKey;
+
+    /**
+     * The encounter that was IN_PROGRESS when this note was written. Nullable —
+     * pre-existing notes and notes written with no active encounter stay unscoped
+     * and are never subject to the sign-lock in PatientTagNoteService.
+     */
+    @Column(name = "encounter_id")
+    private UUID encounterId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

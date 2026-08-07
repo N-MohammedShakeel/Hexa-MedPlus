@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { Upload, AlertCircle, Loader2, CheckCircle2, AlertTriangle, ChevronDown } from 'lucide-react';
+import { useSelector, useDispatch } from 'react-redux';
+import { Upload, AlertCircle, Loader2, CheckCircle2, AlertTriangle, ChevronDown, Clock } from 'lucide-react';
 import { Button, Input } from '../../../components/ui';
 import Card from '../../../components/ui/Card';
 import axiosInstance from '../../../config/axios';
 import { notifyError } from '../../../common/utils/toast';
+import { resetBatches, startBatch, updateBatchById, appendBatchLog, pollTimers } from '../../../store/slices/uploadSlice';
+import { notificationActions } from '../../../store/slices/notificationSlice';
 
 // What the async AI pipeline actually does per flow type — shown as descriptive text
 // only, never as fake sub-steps we can't actually observe progress for.
@@ -38,20 +41,25 @@ function BatchUploadProgress({ batches }) {
         Upload Progress
       </h3>
       <div className="space-y-3">
-        {batches.map((batch, bi) => {
-          const isExpanded = expanded === bi;
-          const phase = batch.phase; // 'upload' | 'analyze' | 'done' | 'blur' | 'failed' | 'timeout'
+        {batches.map((batch) => {
+          const isExpanded = expanded === batch.id;
+          const phase = batch.phase; // 'upload' | 'queued' | 'analyze' | 'done' | 'blur' | 'failed' | 'timeout'
           const uploadDone = phase !== 'upload';
           const analyzeDone = phase === 'done' || phase === 'blur' || phase === 'failed' || phase === 'timeout';
           const isFailed = phase === 'failed';
           const isBlur = phase === 'blur';
           const isDone = phase === 'done';
+          // The AI service processes one Kafka message at a time — a file only becomes
+          // 'analyze' once the worker actually picks it up. Until then it's genuinely
+          // waiting behind other uploads, not being analyzed.
+          const isQueued = phase === 'queued';
 
           const statusLabel = isFailed ? 'Failed'
             : isBlur ? 'Action Required'
             : isDone ? 'Done'
             : phase === 'timeout' ? 'Still processing'
             : phase === 'analyze' ? 'Analyzing...'
+            : isQueued ? 'Queued'
             : 'Uploading...';
 
           const cardTone = isFailed
@@ -63,11 +71,11 @@ function BatchUploadProgress({ batches }) {
             : 'border-neutral-200 dark:border-slate-700 bg-white dark:bg-slate-900';
 
           return (
-            <div key={bi} className={`rounded-8 border ${cardTone} overflow-hidden`}>
+            <div key={batch.id} className={`rounded-8 border ${cardTone} overflow-hidden`}>
               {/* Header row */}
               <button
                 className="w-full flex items-center gap-3 px-4 py-3 text-left"
-                onClick={() => setExpanded(isExpanded ? null : bi)}
+                onClick={() => setExpanded(isExpanded ? null : batch.id)}
               >
                 {isFailed ? (
                   <AlertCircle className="w-4 h-4 text-danger-500 shrink-0" />
@@ -75,6 +83,8 @@ function BatchUploadProgress({ batches }) {
                   <AlertTriangle className="w-4 h-4 text-warning-500 shrink-0" />
                 ) : isDone ? (
                   <CheckCircle2 className="w-4 h-4 text-success-500 shrink-0" />
+                ) : isQueued ? (
+                  <Clock className="w-4 h-4 text-neutral-400 shrink-0" />
                 ) : (
                   <Loader2 className="w-4 h-4 text-primary-500 animate-spin shrink-0" />
                 )}
@@ -97,22 +107,24 @@ function BatchUploadProgress({ batches }) {
                   <div className={`flex-1 h-0.5 ${uploadDone ? 'bg-success-400' : 'bg-neutral-200 dark:bg-slate-700'}`} />
                   <div className="flex items-center gap-1.5">
                     <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                      isBlur ? 'bg-warning-500 text-white' : analyzeDone ? 'bg-success-500 text-white' : uploadDone ? 'bg-primary-500 text-white' : 'bg-neutral-200 dark:bg-slate-700 text-neutral-400'
+                      isBlur ? 'bg-warning-500 text-white' : analyzeDone ? 'bg-success-500 text-white' : (uploadDone && !isQueued) ? 'bg-primary-500 text-white' : 'bg-neutral-200 dark:bg-slate-700 text-neutral-400'
                     }`}>
-                      {isBlur ? <AlertTriangle className="w-3 h-3" /> : analyzeDone ? <CheckCircle2 className="w-3 h-3" /> : uploadDone ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="w-1 h-1 rounded-full bg-current" />}
+                      {isBlur ? <AlertTriangle className="w-3 h-3" /> : analyzeDone ? <CheckCircle2 className="w-3 h-3" /> : isQueued ? <Clock className="w-3 h-3" /> : uploadDone ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="w-1 h-1 rounded-full bg-current" />}
                     </div>
-                    <span className="text-[11px] font-medium text-neutral-600 dark:text-slate-400">AI Analysis</span>
+                    <span className="text-[11px] font-medium text-neutral-600 dark:text-slate-400">{isQueued ? 'Queued' : 'AI Analysis'}</span>
                   </div>
                 </div>
               )}
 
               {/* Human-readable current status line */}
-              {!isFailed && (phase === 'analyze' || isBlur || phase === 'timeout') && (
+              {!isFailed && (phase === 'analyze' || isBlur || phase === 'timeout' || isQueued) && (
                 <p className={`px-4 pb-3 text-xs -mt-1 ${isBlur ? 'text-warning-600 dark:text-warning-500 font-medium' : 'text-neutral-500 dark:text-slate-400'}`}>
                   {isBlur
                     ? 'Blurry regions detected — click this document in the list below to describe them before AI structuring continues.'
                     : phase === 'timeout'
                     ? 'AI analysis is taking longer than expected — check the document list for updates.'
+                    : isQueued
+                    ? 'Waiting for the AI worker to finish other documents — analysis starts automatically once it reaches this file.'
                     : (ANALYSIS_DESCRIPTIONS[batch.flowType] || 'AI is analyzing this document...')}
                 </p>
               )}
@@ -136,6 +148,8 @@ function BatchUploadProgress({ batches }) {
 }
 
 export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
+  const dispatch = useDispatch();
+  const batches = useSelector(state => state.upload.batches);
   const fileInputRef = React.useRef(null);
   const [stagedFiles, setStagedFiles] = useState([]);
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
@@ -144,16 +158,10 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
   const [uploadCategory, setUploadCategory] = useState('Clinical Notes');
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [batches, setBatches] = useState([]);
-  // Per-batch poll interval handles, so each file's polling is fully independent
-  // and can be torn down without touching any other file's upload.
-  const pollTimers = React.useRef({});
-
-  React.useEffect(() => {
-    return () => {
-      Object.values(pollTimers.current).forEach(clearInterval);
-    };
-  }, []);
+  // NOTE: batch state and poll timers deliberately do NOT live in component
+  // state/refs — they're in Redux + the module-level `pollTimers` registry
+  // (uploadSlice.js) so navigating away from this page and back doesn't lose
+  // progress or kill the in-flight status polling.
 
   // Guideline/protocol documents are uploaded exclusively through the Clinical
   // Protocols page (which collects specialty/expiry metadata this form doesn't) —
@@ -184,27 +192,20 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
   };
   const removeStaged = (idx) => setStagedFiles(prev => prev.filter((_, i) => i !== idx));
 
-  const updateBatch = (batchIdx, patch) => {
-    setBatches(prev => {
-      const updated = [...prev];
-      if (!updated[batchIdx]) return prev;
-      updated[batchIdx] = typeof patch === 'function' ? patch(updated[batchIdx]) : { ...updated[batchIdx], ...patch };
-      return updated;
-    });
-  };
-
-  const stopPolling = (batchIdx) => {
-    const timer = pollTimers.current[batchIdx];
+  const stopPolling = (id) => {
+    const timer = pollTimers[id];
     if (timer) {
       clearInterval(timer);
-      delete pollTimers.current[batchIdx];
+      delete pollTimers[id];
     }
   };
 
   // Once the Java-side upload finishes, the file is only queued — blur detection,
   // Vision AI and LLaMA structuring still have to run asynchronously in the AI
   // service. Poll the real document status instead of pretending we're done.
-  const startPollingStatus = (batchIdx, fileKey) => {
+  // The interval itself lives in the module-level `pollTimers` registry (not a
+  // component ref), so it keeps running even if this component unmounts.
+  const startPollingStatus = (id, fileKey, fileName) => {
     let attempts = 0;
     const timer = setInterval(async () => {
       attempts += 1;
@@ -212,25 +213,37 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
         const { data } = await axiosInstance.get(`/api/documents/by-file-key/${encodeURIComponent(fileKey)}`);
         const status = data?.status;
         if (TERMINAL_STATUSES.has(status)) {
-          stopPolling(batchIdx);
-          updateBatch(batchIdx, {
-            phase: status === 'COMPLETED' ? 'done' : status === 'BLUR_DETECTED' ? 'blur' : 'failed',
-          });
+          stopPolling(id);
+          dispatch(updateBatchById({
+            id,
+            patch: { phase: status === 'COMPLETED' ? 'done' : status === 'BLUR_DETECTED' ? 'blur' : 'failed' },
+          }));
+          dispatch(notificationActions.addNotification(
+            status === 'COMPLETED'
+              ? { title: "Document Analysis Complete", message: `${fileName} finished AI analysis and is ready to verify.`, type: "success" }
+              : status === 'BLUR_DETECTED'
+              ? { title: "Document Needs Your Input", message: `${fileName} has blurry regions — click it in the list to describe them.`, type: "info" }
+              : { title: "Document Analysis Failed", message: `${fileName} failed AI processing.`, type: "error" }
+          ));
           refreshDocuments();
           return;
         }
+        // Not terminal yet: the AI service's single Kafka consumer only flips status to
+        // AI_PROCESSING once it actually picks this file up — until then it's still
+        // sitting behind other uploads (PROCESSING/REQUIRES_VERIFICATION), not being analyzed.
+        dispatch(updateBatchById({ id, patch: { phase: status === 'AI_PROCESSING' ? 'analyze' : 'queued' } }));
       } catch (err) {
         // Transient fetch errors during polling shouldn't kill the whole batch —
         // just try again on the next tick.
         console.error('Status poll failed:', err);
       }
       if (attempts >= MAX_POLL_ATTEMPTS) {
-        stopPolling(batchIdx);
-        updateBatch(batchIdx, { phase: 'timeout' });
+        stopPolling(id);
+        dispatch(updateBatchById({ id, patch: { phase: 'timeout' } }));
         refreshDocuments();
       }
     }, 4000);
-    pollTimers.current[batchIdx] = timer;
+    pollTimers[id] = timer;
   };
 
   const doUpload = async () => {
@@ -241,9 +254,8 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
       return;
     }
     setUploading(true);
-    Object.values(pollTimers.current).forEach(clearInterval);
-    pollTimers.current = {};
-    setBatches([]);
+    Object.keys(pollTimers).forEach(id => { clearInterval(pollTimers[id]); delete pollTimers[id]; });
+    dispatch(resetBatches());
 
     const resolvedType = typeMap[uploadCategory] || 'OTHER';
 
@@ -252,19 +264,15 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
     const uploadPromises = stagedFiles.map(async (file, fi) => {
       const flowType = getFlowType(uploadCategory, file.name);
       const jobId = `job-${Date.now()}-${fi}`;
-      const batchIdx = fi;
+      const id = jobId;
 
-      setBatches(prev => {
-        const updated = [...prev];
-        updated[batchIdx] = { fileName: file.name, flowType, phase: 'upload', log: [`▶ [${file.name}] Upload starting...`] };
-        return updated;
-      });
+      dispatch(startBatch({ id, fileName: file.name, fileKey: null, flowType, phase: 'upload', log: [`▶ [${file.name}] Upload starting...`] }));
 
       const es = new EventSource(`/api/documents/progress/${jobId}`);
       es.onmessage = (e) => {
-        updateBatch(batchIdx, b => ({ ...b, log: [...b.log, `  ${e.data}`] }));
+        dispatch(appendBatchLog({ id, line: `  ${e.data}` }));
         if (e.data.toLowerCase().includes('error') || e.data.toLowerCase().includes('failed')) {
-          updateBatch(batchIdx, { phase: 'failed' });
+          dispatch(updateBatchById({ id, patch: { phase: 'failed' } }));
           es.close();
         }
       };
@@ -282,20 +290,17 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
         es.close();
         const fileKey = res?.data?.fileKey;
         if (fileKey) {
-          updateBatch(batchIdx, b => (b.phase === 'failed' ? b : { ...b, phase: 'analyze' }));
-          startPollingStatus(batchIdx, fileKey);
+          dispatch(updateBatchById({ id, patch: { fileKey, phase: 'queued' } }));
+          startPollingStatus(id, fileKey, file.name);
         } else {
           // Upload succeeded but we have no way to track further progress — don't
           // claim it's done when we genuinely don't know.
-          updateBatch(batchIdx, { phase: 'timeout' });
+          dispatch(updateBatchById({ id, patch: { phase: 'timeout' } }));
         }
       } catch (err) {
         es.close();
-        updateBatch(batchIdx, b => ({
-          ...b,
-          phase: 'failed',
-          log: [...(b?.log || []), `✗ Upload error: ${err.response?.data?.error || err.message}`]
-        }));
+        dispatch(appendBatchLog({ id, line: `✗ Upload error: ${err.response?.data?.error || err.message}` }));
+        dispatch(updateBatchById({ id, patch: { phase: 'failed' } }));
       }
     });
 
@@ -391,6 +396,7 @@ export default function DocumentUploadZone({ allPatients, refreshDocuments }) {
                   leftIcon={AlertCircle}
                   value={patientSearchTerm}
                   onChange={(e) => { setPatientSearchTerm(e.target.value); setMrnInput(''); }}
+                  onClear={() => { setPatientSearchTerm(''); setMrnInput(''); }}
                   required
                 />
                 {patientSearchTerm && !mrnInput && (

@@ -11,6 +11,8 @@ public class PatientNoteDto {
         private String customTag; // label when tag = CUSTOM
         private String content;
         private String status;    // Active | Current Medication | Missed Doses | Resolved | Past (Cured) | Under Observation
+        private String documentFileKey; // set when this note comes from a verified document upload (ai-service)
+        private String encounterId; // the encounter that was IN_PROGRESS when this note was written
     }
 
     @Data @NoArgsConstructor @AllArgsConstructor @Builder
@@ -28,6 +30,8 @@ public class PatientNoteDto {
         private String content;
         private String comment;
         private String status;
+        private String documentFileKey;
+        private String encounterId;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
     }

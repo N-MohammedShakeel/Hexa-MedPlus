@@ -33,6 +33,8 @@ public class EncounterDto {
         private String aiCodes;
         private String codingDraft;      // JSON snapshot of code review progress
         private String revisionNote;     // Physician note when requesting revision
+        private LocalDateTime signedAt;  // set once the physician signs & locks the encounter
+        private String signedBy;
         private java.util.List<NoteDto.Response> notes;
         private java.util.List<LabDto> labs;
         private java.util.List<ImagingDto> imaging;

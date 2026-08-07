@@ -15,11 +15,19 @@ public class PatientDto {
         private LocalDate dob;
         private String gender;
         private String department;
+        private String primaryDiagnosis;
         private String status;
         private String room;
         private LocalDateTime admissionDate;
         private List<String> allergies;
         private List<String> activeMedications;
+    }
+
+    /** Partial update — only non-null fields are applied. Used by PatientController's PUT /{id}. */
+    @Data @NoArgsConstructor @AllArgsConstructor @Builder
+    public static class UpdateRequest {
+        private String department;
+        private String primaryDiagnosis;
     }
 
     @Data @NoArgsConstructor @AllArgsConstructor @Builder
@@ -31,6 +39,7 @@ public class PatientDto {
         private LocalDate dob;
         private String gender;
         private String department;
+        private String primaryDiagnosis;
         private String status;
         private String room;
         private LocalDateTime admissionDate;

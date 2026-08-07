@@ -44,7 +44,7 @@ export default function DocumentViewModal({
         reportSummary: editedText, 
         verified: true 
       }));
-      setDocuments(prev => prev.map(d => d.id === selectedDoc?.id ? { ...d, aiVerified: true, status: 'COMPLETED' } : d));
+      setDocuments(prev => prev.map(d => d.id === selectedDoc?.id ? { ...d, aiVerified: true, verified: true, status: 'COMPLETED' } : d));
       setIsEditing(false);
     } catch (err) {
       console.error('Failed to save edit:', err);
@@ -63,12 +63,28 @@ export default function DocumentViewModal({
         });
       }
       setDocAiResult(prev => ({ ...prev, verified: true }));
-      setDocuments(prev => prev.map(d => d.id === selectedDoc?.id ? { ...d, aiVerified: true, status: 'COMPLETED' } : d));
+      setDocuments(prev => prev.map(d => d.id === selectedDoc?.id ? { ...d, aiVerified: true, verified: true, status: 'COMPLETED' } : d));
     } catch (err) {
       console.error('Failed to verify response:', err);
       notifyError('Failed to verify response.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const [isConfirmingIdentity, setIsConfirmingIdentity] = useState(false);
+  const handleConfirmIdentity = async () => {
+    setIsConfirmingIdentity(true);
+    try {
+      if (docAiResult?.id) {
+        await axiosInstance.put(`/api/ai/vision/results/${docAiResult.id}/confirm-identity`);
+      }
+      setDocAiResult(prev => ({ ...prev, identityConfirmed: true }));
+    } catch (err) {
+      console.error('Failed to confirm identity:', err);
+      notifyError('Failed to confirm patient identity.');
+    } finally {
+      setIsConfirmingIdentity(false);
     }
   };
 
@@ -190,11 +206,7 @@ export default function DocumentViewModal({
               ) : docAiResult ? (
                 (() => {
                   const isImaging = ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(selectedDoc?.type);
-                  const ocrText = docAiResult.extractedText || '';
-                  const sexMatch = ocrText.match(/sex\s*[\/:]?\s*(male|female)/i);
-                  const reportedSex = sexMatch ? sexMatch[1].toLowerCase() : null;
-                  const patientGenderNorm = (selectedDoc?.patientGender || '').toLowerCase().replace('m','male').replace('f','female');
-                  const sexMismatch = reportedSex && patientGenderNorm && reportedSex !== patientGenderNorm;
+                  const identityMismatch = docAiResult.identityCheckStatus === 'mismatch' && !docAiResult.identityConfirmed;
                   return (
                 <>
                   {/* ── Editable AI Heading ──────────────────────── */}
@@ -228,15 +240,25 @@ export default function DocumentViewModal({
                     )}
                   </div>
 
-                  {/* —— PHI Sex Mismatch Warning —————————————————— */}
-                  {sexMismatch && (
-                    <div className="flex items-start gap-2 p-2.5 bg-warning-50 dark:bg-warning-500/10 border border-warning-500/40 rounded-8">
-                      <AlertTriangle className="w-4 h-4 text-warning-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-bold text-warning-700 dark:text-warning-500">PHI Mismatch Detected</p>
-                        <p className="text-xs text-warning-600 dark:text-warning-500 mt-0.5">
-                          Patient sex in report (<strong className="capitalize">{reportedSex}</strong>) differs from the patient record. Please verify this is the correct document.
+                  {/* —— Patient Identity Mismatch Warning —————————————————— */}
+                  {identityMismatch && (
+                    <div className="flex items-start gap-2 p-2.5 bg-danger-50 dark:bg-danger-500/10 border border-danger-500/40 rounded-8">
+                      <AlertTriangle className="w-4 h-4 text-danger-500 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-danger-700 dark:text-danger-500">Patient Identity Mismatch Detected</p>
+                        <ul className="text-xs text-danger-600 dark:text-danger-500 mt-1 space-y-0.5">
+                          {(docAiResult.identityMismatches || []).map((m, i) => (
+                            <li key={i}>
+                              <span className="capitalize font-semibold">{m.field}</span>: document says "<strong>{m.documentValue}</strong>", patient record says "<strong>{m.patientValue}</strong>"
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-xs text-danger-600 dark:text-danger-500 mt-1.5">
+                          Double-check this document was uploaded to the correct patient before verifying its content.
                         </p>
+                        <Button size="sm" variant="danger" className="mt-2" onClick={handleConfirmIdentity} disabled={isConfirmingIdentity}>
+                          {isConfirmingIdentity ? 'Confirming...' : 'Confirm this is the correct patient'}
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -264,7 +286,7 @@ export default function DocumentViewModal({
                         {isImaging ? 'Imaging Details' : (docAiResult.clinicalFindings?.length > 0 ? 'Recommendation' : (docAiResult.extractedText ? 'Extracted Text (Vision AI)' : 'AI Summary'))}
                       </h5>
                       <div className="flex items-center gap-2">
-                        {!isEditing && !docAiResult.verified && (
+                        {!isEditing && !docAiResult.verified && !identityMismatch && (
                           <Button size="sm" variant="secondary" onClick={handleDirectVerify} disabled={isSaving}>
                             <CheckCircle className="w-3.5 h-3.5 text-success-600 dark:text-success-500 mr-1" />
                             1-Click Verify
@@ -293,7 +315,7 @@ export default function DocumentViewModal({
                         />
                         <div className="flex justify-end gap-2">
                           <Button variant="secondary" size="sm" onClick={() => { setIsEditing(false); setEditedText(docAiResult.extractedText || docAiResult.reportSummary || ''); }}>Cancel</Button>
-                          <Button size="sm" onClick={handleSaveEdit} disabled={isSaving}>
+                          <Button size="sm" onClick={handleSaveEdit} disabled={isSaving || identityMismatch} title={identityMismatch ? 'Confirm patient identity above first' : undefined}>
                             {isSaving ? 'Saving...' : 'Verify & Save'}
                           </Button>
                         </div>

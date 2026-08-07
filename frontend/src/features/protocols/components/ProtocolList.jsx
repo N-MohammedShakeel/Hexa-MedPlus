@@ -112,6 +112,7 @@ export default function ProtocolList({
               placeholder="Search guidelines..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              onClear={() => setSearchTerm('')}
               leftIcon={Search}
             />
           </div>

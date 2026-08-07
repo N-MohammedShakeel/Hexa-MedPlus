@@ -5,13 +5,12 @@ import { usePatientDetail } from "../../../common/hooks/usePatients";
 import { usePatientEncounters } from "../../../common/hooks/useEncounters";
 import axiosInstance from "../../../config/axios";
 import apiClient from "../../../services/api/apiClient";
-import { API_ENDPOINTS } from "../../../common/constants/apiEndpoints";
 import Button from "../../../components/ui/Button";
 import DocumentVisionViewer from "../../documents/components/DocumentVisionViewer";
 import { ArrowLeft, CheckCircle, Send, AlertTriangle } from "lucide-react";
 import { setAiGenerating } from "../../../store/slices/clinicalSlice";
 import { createEncounter, executeAiWorkflow, fetchAiWorkflow, validateNote } from "../../../store/slices/encounterSlice";
-import { logPatientChartViewed, logLabReportOpened, logImagingViewed } from "../../../services/api/auditService";
+import { logPatientChartViewed, logLabReportOpened, logImagingViewed, logEncounterLocked } from "../../../services/api/auditService";
 import { notifySuccess, notifyError } from "../../../common/utils/toast";
 import { useConfirm } from "../../../contexts/ConfirmContext";
 
@@ -104,6 +103,19 @@ export default function EncounterWorkspacePage() {
         }
     };
 
+    const handleConfirmIdentity = async (id) => {
+        try {
+            await apiClient.put(`/ai/vision/results/${id}/confirm-identity`);
+            setVisionResults(prev => prev.map(r => r.id === id ? { ...r, identityConfirmed: true } : r));
+            if (selectedVisionDoc && selectedVisionDoc.id === id) {
+                setSelectedVisionDoc(prev => ({ ...prev, identityConfirmed: true }));
+            }
+        } catch (error) {
+            console.error("Failed to confirm identity:", error);
+            notifyError("Failed to confirm patient identity.");
+        }
+    };
+
     const handleStartEditVision = (rec, e) => {
         if (e && e.stopPropagation) e.stopPropagation();
         setEditingVisionRecord(rec);
@@ -171,7 +183,11 @@ export default function EncounterWorkspacePage() {
                     encounterType: 'Outpatient',
                     chiefComplaint: 'AI Generated Assessment'
                 }));
-                targetEncounterId = newEncounterRes.data.id;
+                // createEncounter's thunk already returns response.data (the encounter
+                // itself), not an axios response — .data here was always undefined,
+                // throwing and failing the very first AI generation for a patient with
+                // no prior encounter.
+                targetEncounterId = newEncounterRes.id;
                 await refetchEncounters();
             }
             
@@ -307,6 +323,7 @@ export default function EncounterWorkspacePage() {
                 customTag: noteTag === 'CUSTOM' ? noteCustomTag : undefined,
                 content: newNoteContent.trim(),
                 status: 'Active',
+                encounterId: latestEncounter?.id || undefined,
             };
             await axiosInstance.post(`/api/clinical/patients/${patient.mrn}/notes`, payload);
             setNewNoteContent("");
@@ -361,17 +378,22 @@ export default function EncounterWorkspacePage() {
 
     // Load previously generated AI insights + Vision results
     React.useEffect(() => {
-        if (!latestEncounter) return;
+        if (!latestEncounter) {
+            setAiData(null);
+            return;
+        }
         const loadSavedInsights = async () => {
             try {
                 const res = await dispatch(fetchAiWorkflow(latestEncounter.id));
-                if (res && res.success) {
-                    setAiData(res);
-                }
+                // A new/different encounter has no insights of its own yet — clear
+                // whatever the PREVIOUS encounter left in aiData instead of leaving it
+                // displayed until a refresh happens to reset it.
+                setAiData(res && res.success ? res : null);
             } catch (err) {
                 if (err.response?.status !== 404) {
                     console.error('Failed to load saved AI insights:', err);
                 }
+                setAiData(null);
             }
         };
         loadSavedInsights();
@@ -453,6 +475,11 @@ const [isSigning, setIsSigning] = useState(false);
     // Encounter is locked once physician has signed it (any status except IN_PROGRESS)
     const isLocked = latestEncounter && latestEncounter.status !== 'IN_PROGRESS';
 
+    // patientNotes is every note the patient has ever had, across all encounters —
+    // scope down to just THIS encounter's own notes so a brand-new encounter can't
+    // be signed just because the patient has old notes from a previous visit.
+    const currentEncounterNotes = (patientNotes || []).filter(n => n.encounterId === latestEncounter?.id);
+
     const LOCKED_STATUS_LABELS = {
         CODING_PENDING:  { text: 'Sent to Coding',     color: 'bg-warning-50 text-warning-500 border-warning-200 dark:bg-warning-500/10 dark:border-warning-500/30' },
         CODING_COMPLETE: { text: 'Under Review',       color: 'bg-info-50 text-info-600 border-info-200 dark:bg-info-500/10 dark:text-info-500 dark:border-info-500/30' },
@@ -478,11 +505,13 @@ const [isSigning, setIsSigning] = useState(false);
 
     const handleSignEncounter = async () => {
         if (!latestEncounter) return;
+        const ok = await confirm("Sign & lock this encounter? Existing notes become permanent — you can still add addenda afterward.");
+        if (!ok) return;
         try {
             setIsSigning(true);
-            await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.UPDATE_STATUS(latestEncounter.id), {
-                status: 'CODING_PENDING'
-            });
+            const signedBy = user?.name || user?.email || 'Physician';
+            await axiosInstance.put(`/api/encounters/${latestEncounter.id}/sign`, { signedBy });
+            logEncounterLocked(latestEncounter.id, patient?.mrn);
             await refetchEncounters();
         } catch (error) {
             console.error("Failed to sign encounter", error);
@@ -582,9 +611,9 @@ const [isSigning, setIsSigning] = useState(false);
                             variant="secondary"
                             icon={Send}
                             onClick={handleSignEncounter}
-                            disabled={isSigning || (latestEncounter?.notes || []).length === 0}
+                            disabled={isSigning || currentEncounterNotes.length === 0}
                         >
-                            {isSigning ? "Signing..." : "Sign Encounter"}
+                            {isSigning ? "Signing..." : "Sign & Lock Encounter"}
                         </Button>
                     ) : (
                         <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-6 border text-xs font-bold ${
@@ -613,16 +642,30 @@ const [isSigning, setIsSigning] = useState(false);
                                     <AlertTriangle className="w-4 h-4 text-warning-500 shrink-0 mt-0.5" />
                                     <div>
                                         <p className="text-xs font-bold text-warning-500">Encounter Locked for Editing</p>
-                                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">This encounter has been signed and is currently <strong>{latestEncounter?.status?.replace(/_/g, ' ')}</strong>. Notes cannot be modified.</p>
+                                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">This encounter has been signed and is currently <strong>{latestEncounter?.status?.replace(/_/g, ' ')}</strong>. Notes cannot be modified — add an addendum below instead.</p>
                                     </div>
                                 </div>
                                 <Button size="sm" variant="primary" onClick={handleCreateNewEncounter}>Start New Encounter</Button>
                             </div>
                         )}
 
+                        {/* Coder requested a revision — physician needs to see why and respond with an addendum */}
+                        {latestEncounter?.status === 'CODING_REVISION' && latestEncounter?.revisionNote && (
+                            <div className="max-w-3xl mx-auto mb-4 flex items-start gap-3 p-3 bg-danger-50 dark:bg-danger-500/10 border border-danger-200 dark:border-danger-500/30 rounded-8">
+                                <AlertTriangle className="w-4 h-4 text-danger-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-xs font-bold text-danger-600 dark:text-danger-500">Coder Requested a Revision</p>
+                                    <p className="text-xs text-neutral-700 dark:text-neutral-300 mt-0.5">{latestEncounter.revisionNote}</p>
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Add an addendum below addressing this — the original signed note stays as-is.</p>
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === "notes" && (
-                            <EncounterNotesTab 
+                            <EncounterNotesTab
                                 isLocked={isLocked}
+                                patient={patient}
+                                latestEncounter={latestEncounter}
                                 noteTag={noteTag} setNoteTag={setNoteTag}
                                 noteCustomTag={noteCustomTag} setNoteCustomTag={setNoteCustomTag}
                                 noteAlert={noteAlert}
@@ -695,6 +738,7 @@ const [isSigning, setIsSigning] = useState(false);
                         setSelectedVisionDoc(null);
                     }}
                     onVerify={(id) => handleVerifyVisionRecord(id)}
+                    onConfirmIdentity={(id) => handleConfirmIdentity(id)}
                     onEditFindings={(rec) => setEditingVisionRecord(rec)}
                 />
             )}

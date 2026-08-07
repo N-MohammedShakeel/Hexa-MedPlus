@@ -15,6 +15,8 @@ from app.core.db import get_db
 from app.models.document_analysis import DocumentAnalysisEntity
 from app.utils.logger import log_info, log_error
 from app.utils.blur_detector import check_image_blur
+from app.utils.identity_matcher import check_patient_identity
+from app.utils.notes_client import push_document_note
 import app.core.state as state
 import os
 
@@ -42,12 +44,19 @@ Rules:
 - If the image is a logo, QR code, signature, or any other graphic that does not contain medical/clinical information, you MUST set `"is_clinical_data": false`. Otherwise, set it to `true`.
 - If any text is obscured, smudged, or blurred, do not guess or hallucinate text that you cannot read clearly. Leave `blurry_text_regions` as an empty array `[]` (the backend will populate it via OpenCV).
 
+If the document/image contains a patient's name, date of birth, or gender printed on it (e.g. a lab report header, a clinical note, an ID band), extract them into `patient_info` verbatim as printed. Leave any field you cannot find as an empty string — never guess or hallucinate identity fields.
+
 The JSON schema is:
 {
   "image_metadata": {
       "modality": "",
       "body_part_or_document_type": "",
       "is_clinical_data": true
+  },
+  "patient_info": {
+      "name": "",
+      "dob": "",
+      "gender": ""
   },
   "image_quality": {
       "overall_quality": "",
@@ -73,6 +82,43 @@ The JSON schema is:
   "limitations": []
 }
 """
+
+def _parse_llm_json_response(raw_text: str) -> dict:
+    """
+    Cleans markdown fences, extracts the {...} block, fixes stray backslash
+    escapes LLMs sometimes emit, and falls back to json_repair
+    before giving up. Shared by every vision provider (NVIDIA NIM, AWS
+    Bedrock) so a parsing quirk fixed for one doesn't silently stay broken
+    for the other. Never raises — returns {"raw_text": ...} as a last resort
+    so a malformed response degrades gracefully instead of crashing the
+    caller or (worse) getting swallowed and mistaken for a real result.
+    """
+    content_str = re.sub(r"^```(?:json)?", "", raw_text.strip(), flags=re.MULTILINE)
+    content_str = re.sub(r"```$", "", content_str.strip(), flags=re.MULTILINE).strip()
+
+    match = re.search(r"\{.*\}", content_str, re.DOTALL)
+    if match:
+        content_str = match.group(0)
+
+    # Fix invalid backslash escapes (e.g. \< or \% or \ space) that LLMs sometimes generate
+    content_str = re.sub(r'\\(?!["\\/bfnrtu])', lambda m: '\\\\', content_str)
+
+    try:
+        parsed = json.loads(content_str, strict=False)
+        if isinstance(parsed, str):
+            parsed = json.loads(parsed, strict=False)
+        return parsed
+    except json.JSONDecodeError:
+        try:
+            repaired = repair_json(content_str, return_objects=True)
+            if repaired:
+                return repaired
+            raise ValueError("json_repair returned empty")
+        except Exception as e:
+            log_error(f"[!] Failed to parse Vision AI JSON output: {e}")
+            log_error(f"[!] Raw unparseable content:\n{content_str}")
+            return {"raw_text": content_str}
+
 
 async def call_aws_bedrock_vision(image_bytes: bytes, image_type: str, prompt_text: str, model_id: str = "amazon.nova-pro-v1:0", max_tokens: int = 2048) -> dict:
     log_info(f"🤖 VISION ROUTING: Executing with AWS Bedrock Vision ({model_id})...")
@@ -112,14 +158,41 @@ async def call_aws_bedrock_vision(image_bytes: bytes, image_type: str, prompt_te
 
         response = await asyncio.to_thread(_invoke_bedrock)
         output_text = response['output']['message']['content'][0]['text']
-        clean_text = re.sub(r'```(?:json)?\s*', '', output_text)
-        clean_text = re.sub(r'\s*```', '', clean_text).strip()
-        return json.loads(clean_text)
+        return _parse_llm_json_response(output_text)
     except Exception as e:
         log_error(f"AWS Bedrock Vision call failed ({model_id}): {e}")
-        return {"error": f"AWS Bedrock Vision failed: {str(e)}"}
+        return {"api_error": f"AWS Bedrock Vision failed: {str(e)}"}
 
-async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jpeg", max_tokens: int = 2048, custom_prompt: str = None, timeout: float = 300.0) -> dict:
+async def call_aws_bedrock_text(prompt_text: str, model_id: str = "amazon.nova-pro-v1:0", max_tokens: int = 2048) -> dict:
+    """Text-only counterpart to call_aws_bedrock_vision, same converse() shape minus the image block."""
+    log_info(f"🤖 TEXT ROUTING: Executing with AWS Bedrock ({model_id})...")
+    try:
+        import boto3
+        key_id = settings.AWS_ACCESS_KEY_ID or os.environ.get("AWS_ACCESS_KEY_ID")
+        secret_key = settings.AWS_SECRET_ACCESS_KEY or os.environ.get("AWS_SECRET_ACCESS_KEY")
+        region = settings.AWS_DEFAULT_REGION or os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
+        bedrock = boto3.client(
+            'bedrock-runtime',
+            aws_access_key_id=key_id,
+            aws_secret_access_key=secret_key,
+            region_name=region
+        )
+
+        def _invoke_bedrock():
+            return bedrock.converse(
+                modelId=model_id,
+                messages=[{'role': 'user', 'content': [{'text': prompt_text}]}],
+                inferenceConfig={'temperature': 0.1, 'maxTokens': max_tokens}
+            )
+
+        response = await asyncio.to_thread(_invoke_bedrock)
+        output_text = response['output']['message']['content'][0]['text']
+        return _parse_llm_json_response(output_text)
+    except Exception as e:
+        log_error(f"AWS Bedrock text call failed ({model_id}): {e}")
+        return {"api_error": f"AWS Bedrock text failed: {str(e)}"}
+
+async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jpeg", max_tokens: int = 2048, custom_prompt: str = None, timeout: float = 600.0) -> dict:
     actual_prompt = custom_prompt if custom_prompt else prompt
 
     # Route to AWS Bedrock Vision models if selected
@@ -131,7 +204,7 @@ async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jp
     api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
     if not api_key:
         log_error("NVIDIA_API_KEY / NVIDIA_NIM_API_KEY is not set.")
-        return {"error": "NVIDIA_API_KEY is not configured"}
+        return {"api_error": "NVIDIA_API_KEY is not configured"}
 
     base64_img = base64.b64encode(image_bytes).decode("utf-8")
     data_uri = f"data:image/{image_type};base64,{base64_img}"
@@ -168,34 +241,7 @@ async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jp
             if response.status_code == 200:
                 result = response.json()
                 content_str = result["choices"][0]["message"]["content"]
-                
-                # Clean markdown code blocks if present
-                content_str = re.sub(r"^```(?:json)?", "", content_str.strip(), flags=re.MULTILINE)
-                content_str = re.sub(r"```$", "", content_str.strip(), flags=re.MULTILINE).strip()
-                
-                match = re.search(r"\{.*\}", content_str, re.DOTALL)
-                if match:
-                    content_str = match.group(0)
-                    
-                # Fix invalid backslash escapes (e.g. \< or \% or \ space) that LLMs sometimes generate
-                content_str = re.sub(r'\\(?!["\\/bfnrtu])', lambda m: '\\\\', content_str)
-                    
-                try:
-                    parsed = json.loads(content_str, strict=False)
-                    if isinstance(parsed, str):
-                        parsed = json.loads(parsed, strict=False)
-                    return parsed
-                except json.JSONDecodeError:
-                    try:
-                        repaired = repair_json(content_str, return_objects=True)
-                        if repaired:
-                            return repaired
-                        else:
-                            raise ValueError("json_repair returned empty")
-                    except Exception as e:
-                        log_error(f"[!] Failed to parse Vision AI JSON output: {e}")
-                        log_error(f"[!] Raw unparseable content:\n{content_str}")
-                        return {"raw_text": content_str}
+                return _parse_llm_json_response(content_str)
             else:
                 log_error(f"[!] API Error: {response.text}")
                 return {"api_error": response.text, "status_code": response.status_code}
@@ -208,11 +254,6 @@ async def structure_lab_report_with_llama(ocr_text: str) -> dict:
     if not ocr_text or not ocr_text.strip():
         return {}
 
-    api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
-    if not api_key:
-        log_error("NVIDIA_API_KEY / NVIDIA_NIM_API_KEY is not set.")
-        return {"error": "NVIDIA_API_KEY is not configured"}
-
     prompt_text = """You are a medical AI assistant.
 Extract structured information from the following lab report OCR text.
 Output MUST be a single JSON object.
@@ -220,7 +261,7 @@ Do not use markdown blocks. Output raw JSON.
 
 Schema:
 {
-    "patient_info": {"name": "", "age": "", "gender": "", "vitals": {}},
+    "patient_info": {"name": "", "dob": "", "age": "", "gender": "", "vitals": {}},
     "lab_findings": [
         {"finding": "Test Name", "result": "12.5", "unit": "g/dL", "reference_range": "13.0 - 17.0", "flag": "L"}
     ],
@@ -230,6 +271,16 @@ Schema:
 
 OCR Text:
 """ + ocr_text
+
+    if state.GLOBAL_LLM_PREFERENCE == "aws_nova_pro":
+        return await call_aws_bedrock_text(prompt_text, model_id="apac.amazon.nova-pro-v1:0", max_tokens=2048)
+    elif state.GLOBAL_LLM_PREFERENCE == "aws_nova":
+        return await call_aws_bedrock_text(prompt_text, model_id="apac.amazon.nova-lite-v1:0", max_tokens=2048)
+
+    api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
+    if not api_key:
+        log_error("NVIDIA_API_KEY / NVIDIA_NIM_API_KEY is not set.")
+        return {"error": "NVIDIA_API_KEY is not configured"}
 
     payload = {
         "model": "meta/llama-3.1-70b-instruct",
@@ -291,19 +342,26 @@ async def structure_clinical_note_with_llama(ocr_text: str, doc_type: str = "OTH
     if not ocr_text or not ocr_text.strip():
         return {}
 
-    api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
-    if not api_key:
-        return {}
-
-    schema_str = '{"heading": "Concise document title", "summary": "Clinical summary in 2-3 sentences", "key_points": ["Key finding 1"]}'
+    schema_str = '{"heading": "Concise document title", "summary": "Clinical summary in 2-3 sentences", "key_points": ["Key finding 1"], "patient_info": {"name": "", "dob": "", "gender": ""}}'
     prompt_text = (
         "You are a medical AI assistant.\n"
         "Summarize and structure the following clinical document OCR text.\n"
+        "If a patient name, date of birth, or gender is printed in the text, extract them verbatim into patient_info. "
+        "Leave any field you cannot find as an empty string — never guess.\n"
         "Output MUST be a single JSON object. Do not use markdown. Output raw JSON.\n\n"
         "Schema:\n" + schema_str + "\n\n"
         "Document type: " + doc_type + "\n"
         "OCR Text:\n"
     ) + ocr_text
+
+    if state.GLOBAL_LLM_PREFERENCE == "aws_nova_pro":
+        return await call_aws_bedrock_text(prompt_text, model_id="apac.amazon.nova-pro-v1:0", max_tokens=1024)
+    elif state.GLOBAL_LLM_PREFERENCE == "aws_nova":
+        return await call_aws_bedrock_text(prompt_text, model_id="apac.amazon.nova-lite-v1:0", max_tokens=1024)
+
+    api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_NIM_API_KEY") or settings.NVIDIA_NIM_API_KEY
+    if not api_key:
+        return {}
 
     payload = {
         "model": "meta/llama-3.1-70b-instruct",
@@ -470,6 +528,9 @@ async def get_all_vision_results(db: AsyncSession = Depends(get_db)):
             "verified": getattr(r, 'verified', False),
             "needsBlurAnnotation": getattr(r, 'needs_blur_annotation', False) or False,
             "documentId": getattr(r, 'document_id', None),
+            "identityCheckStatus": getattr(r, 'identity_check_status', None),
+            "identityMismatches": getattr(r, 'identity_mismatches', None) or [],
+            "identityConfirmed": getattr(r, 'identity_confirmed', False) or False,
         }
         for r in records
     ]
@@ -506,6 +567,9 @@ async def get_vision_results_by_mrn(mrn: str, db: AsyncSession = Depends(get_db)
             "verified": getattr(r, 'verified', False),
             "needsBlurAnnotation": getattr(r, 'needs_blur_annotation', False) or False,
             "documentId": getattr(r, 'document_id', None),
+            "identityCheckStatus": getattr(r, 'identity_check_status', None),
+            "identityMismatches": getattr(r, 'identity_mismatches', None) or [],
+            "identityConfirmed": getattr(r, 'identity_confirmed', False) or False,
         }
         for r in records
     ]
@@ -628,6 +692,24 @@ async def update_vision_result(
 
     await db.commit()
     await db.refresh(record)
+
+    # Push to the patient's Notes tab whenever this update leaves the record verified —
+    # the single reliable trigger point (see notes_client.py) that replaced the old
+    # scattered auto-pushes. clinical-service upserts by fileKey, so re-verifying an
+    # edited document updates the same note instead of duplicating it. Labs/imaging
+    # keep their own dedicated tabs, not notes.
+    NOTES_EXCLUDED_DOC_TYPES = {'LAB_REPORT', 'IMAGING', 'XRAY', 'MRI', 'CT_SCAN', 'DICOM'}
+    if record.verified and record.document_type not in NOTES_EXCLUDED_DOC_TYPES:
+        tag = 'CLINICAL_NOTE' if record.document_type == 'CLINICAL_NOTE' else 'CUSTOM'
+        custom_tag = record.ai_heading or record.document_type
+        await push_document_note(
+            mrn=record.patient_mrn,
+            tag=tag,
+            custom_tag=custom_tag,
+            content=record.extracted_text or record.report_summary or '',
+            file_key=record.file_key,
+        )
+
     return {
         "status": "SUCCESS",
         "id": record.id,
@@ -636,6 +718,29 @@ async def update_vision_result(
         "aiHeading": record.ai_heading,
         "verified": getattr(record, 'verified', True)
     }
+
+@router.put("/results/{analysis_id}/confirm-identity")
+async def confirm_vision_result_identity(
+    analysis_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Doctor confirmation that a document flagged with a patient-identity mismatch
+    (name/dob/gender extracted from the document doesn't match the target patient
+    record) really does belong to this patient. Kept separate from the content
+    `verify` endpoint above — identity-correctness and content-accuracy are
+    different confirmations.
+    """
+    result = await db.execute(
+        select(DocumentAnalysisEntity).where(DocumentAnalysisEntity.id == analysis_id)
+    )
+    record = result.scalars().first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Vision AI analysis record not found")
+
+    record.identity_confirmed = True
+    await db.commit()
+    return {"status": "SUCCESS", "id": record.id, "identityConfirmed": True}
 
 @router.delete("/results/{analysis_id}")
 async def delete_vision_result(
@@ -780,12 +885,18 @@ async def reanalyze_vision_result(
                     page_bytes = pix.tobytes("png")
 
                     log_info(f"Reanalyze Step 1 (PDF page {page_num}): calling Vision AI for OCR extraction...")
-                    page_vision = await analyze_image_with_vision_ai(page_bytes, "png", max_tokens=4096, timeout=300.0)
+                    page_vision = await analyze_image_with_vision_ai(page_bytes, "png", max_tokens=4096, timeout=600.0)
                     page_ocr = ""
                     if page_vision and 'api_error' not in page_vision:
                         page_ocr = page_vision.get('ocr_extraction', {}).get('extracted_text', '')
                         if page_num == 1 and page_vision.get('image_metadata'):
                             meta.update(page_vision.get('image_metadata'))
+                        if page_vision.get('patient_info'):
+                            existing_info = dict(meta.get('patient_info') or {})
+                            for k, v in page_vision['patient_info'].items():
+                                if v and not existing_info.get(k):
+                                    existing_info[k] = v
+                            meta['patient_info'] = existing_info
 
                     doctor_notes = "\n".join(
                         "- " + region + ": " + note_text
@@ -813,13 +924,19 @@ async def reanalyze_vision_result(
             ext = record.file_key.rsplit('.', 1)[-1].lower() if '.' in record.file_key else 'jpeg'
 
             log_info("Reanalyze Step 1: calling Vision AI for OCR extraction...")
-            vision_result = await analyze_image_with_vision_ai(image_bytes, ext, max_tokens=4096, timeout=300.0)
+            vision_result = await analyze_image_with_vision_ai(image_bytes, ext, max_tokens=4096, timeout=600.0)
 
             if not vision_result or 'api_error' in vision_result:
                 raise HTTPException(status_code=500, detail="Vision AI API failed during re-analysis Step 1")
 
             ocr_text = vision_result.get('ocr_extraction', {}).get('extracted_text', '')
             meta.update(vision_result.get('image_metadata', {}))
+            if vision_result.get('patient_info'):
+                existing_info = dict(meta.get('patient_info') or {})
+                for k, v in vision_result['patient_info'].items():
+                    if v and not existing_info.get(k):
+                        existing_info[k] = v
+                meta['patient_info'] = existing_info
 
             # ── Merge OCR with doctor blur annotations ────────────────────────
             doctor_notes = ""
@@ -849,7 +966,11 @@ async def reanalyze_vision_result(
                 if structured.get('heading'):
                     heading = structured['heading']
                 if structured.get('patient_info'):
-                    meta['patient_info'] = structured['patient_info']
+                    existing_info = dict(meta.get('patient_info') or {})
+                    for k, v in structured['patient_info'].items():
+                        if v and not existing_info.get(k):
+                            existing_info[k] = v
+                    meta['patient_info'] = existing_info
         else:
             structured = await structure_clinical_note_with_llama(merged_text, doc_type)
             if structured:
@@ -867,6 +988,16 @@ async def reanalyze_vision_result(
 
         record.image_metadata = meta
 
+        # Re-analysis can reveal identity fields that were hidden by the blur that
+        # triggered this whole flow in the first place — recheck against the patient
+        # record. A newly-surfaced mismatch requires fresh doctor confirmation even if
+        # an earlier (blurrier) pass had already been confirmed.
+        identity_result = await check_patient_identity(record.patient_mrn, meta.get('patient_info', {}))
+        record.identity_check_status = identity_result['status']
+        record.identity_mismatches = identity_result['mismatches']
+        if identity_result['status'] == 'mismatch':
+            record.identity_confirmed = False
+
         await db.commit()
         await db.refresh(record)
 
@@ -874,23 +1005,8 @@ async def reanalyze_vision_result(
         from app.core.kafka_consumer import _update_document_status
         await _update_document_status(record.file_key, "COMPLETED")
 
-        # ── Auto-save non-lab docs to patient notes ──────────────────────────
-        if doc_type not in ('LAB_REPORT', 'IMAGING', 'XRAY', 'MRI', 'CT_SCAN', 'DICOM') and summary and record.patient_mrn:
-            try:
-                base_url = 'http://api-gateway:8080' if 'postgres' in settings.POSTGRES_HOST else 'http://localhost:8081'
-                tag = 'CLINICAL_NOTE' if doc_type == 'CLINICAL_NOTE' else (record.file_key.split('-', 1)[-1] if '-' in record.file_key else record.file_key)
-                note_payload = {"tag": tag, "content": summary}
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post(
-                        base_url + "/api/clinical/patients/" + record.patient_mrn + "/notes",
-                        json=note_payload
-                    )
-                    if resp.status_code < 300:
-                        log_info("Auto-saved " + doc_type + " to patient notes for MRN " + record.patient_mrn)
-                    else:
-                        log_error("Auto-save note failed: " + resp.text)
-            except Exception as note_err:
-                log_error("Auto-save note exception: " + repr(note_err))
+        # Note: this no longer auto-pushes to patient Notes — that happens exactly
+        # once, gated on the doctor's "Verify" click, via update_vision_result.
 
         return {
             "status": "SUCCESS",

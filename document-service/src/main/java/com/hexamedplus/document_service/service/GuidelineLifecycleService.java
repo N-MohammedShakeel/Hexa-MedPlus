@@ -117,7 +117,7 @@ public class GuidelineLifecycleService {
 
             PdfParserService.ParseResult parseResult = pdfParserService.extractText(tempFile.toFile());
             eventPublisher.publishDocumentParsedEvent(
-                    doc.getFileKey(), parseResult.extractedText(), doc.getTargetMrn(), doc.getDocumentType());
+                    doc.getFileKey(), parseResult.extractedText(), doc.getTargetMrn(), doc.getDocumentType(), doc.getCustomDocName());
             log.info("Re-published document.parsed for fileKey={} as a reconciliation retry", doc.getFileKey());
         } catch (Exception e) {
             log.error("Failed to retry ingestion for fileKey={}: {}", doc.getFileKey(), e.getMessage());

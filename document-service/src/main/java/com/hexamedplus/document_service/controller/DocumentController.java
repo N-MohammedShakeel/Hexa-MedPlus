@@ -169,8 +169,9 @@ public class DocumentController {
             @RequestPart(value = "documentType", required = false) String documentType,
             @RequestPart(value = "specialty", required = false) String specialty,
             @RequestPart(value = "expiryDate", required = false) String expiryDate,
+            @RequestPart(value = "customDocName", required = false) String customDocName,
             @RequestParam(value = "jobId", required = false) String jobId) {
-        return processUpload(filePart, mrn, documentType, specialty, parseExpiry(expiryDate), 1, null, jobId);
+        return processUpload(filePart, mrn, documentType, specialty, parseExpiry(expiryDate), 1, null, jobId, customDocName);
     }
 
     /**
@@ -191,7 +192,7 @@ public class DocumentController {
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(oldDoc -> processUpload(
                         filePart, "HOSPITAL_WIDE", "GUIDELINE", oldDoc.getSpecialty(),
-                        parseExpiry(expiryDate), (oldDoc.getVersion() != null ? oldDoc.getVersion() : 1) + 1, oldDoc.getId(), jobId
+                        parseExpiry(expiryDate), (oldDoc.getVersion() != null ? oldDoc.getVersion() : 1) + 1, oldDoc.getId(), jobId, null
                 ).doOnSuccess(result -> lifecycleService.retire(oldDoc)));
     }
 
@@ -245,7 +246,7 @@ public class DocumentController {
 
     private Mono<Map<String, String>> processUpload(
             FilePart filePart, String mrn, String documentType, String specialty,
-            java.time.LocalDate expiryDate, Integer version, UUID parentDocumentId, String jobId) {
+            java.time.LocalDate expiryDate, Integer version, UUID parentDocumentId, String jobId, String customDocName) {
 
         String actualJobId = jobId != null ? jobId : java.util.UUID.randomUUID().toString();
         progressService.getProgressStream(actualJobId);
@@ -318,6 +319,7 @@ public class DocumentController {
                             .version(version != null ? version : 1)
                             .expiryDate(expiryDate)
                             .parentDocumentId(parentDocumentId)
+                            .customDocName(customDocName)
                             .build();
                     documentRepository.save(doc);
 
@@ -325,14 +327,17 @@ public class DocumentController {
                     try { Files.deleteIfExists(tempFile); Files.deleteIfExists(tempDir); } catch (Exception ignored) {}
 
                     // 4. Return results
-                    return Map.of(
-                            "fileKey", storageKey,
-                            "extractedText", extractedText,
-                            "fileName", originalFilename,
-                            "mrn", mrn != null ? mrn : "UNKNOWN",
-                            "documentType", documentType != null ? documentType : "UNKNOWN",
-                            "jobId", actualJobId
-                    );
+                    java.util.Map<String, String> resultMap = new java.util.HashMap<>();
+                    resultMap.put("fileKey", storageKey);
+                    resultMap.put("extractedText", extractedText);
+                    resultMap.put("fileName", originalFilename);
+                    resultMap.put("mrn", mrn != null ? mrn : "UNKNOWN");
+                    resultMap.put("documentType", documentType != null ? documentType : "UNKNOWN");
+                    resultMap.put("jobId", actualJobId);
+                    if (customDocName != null) {
+                        resultMap.put("customDocName", customDocName);
+                    }
+                    return resultMap;
                 }))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnSuccess(result -> {
@@ -343,7 +348,8 @@ public class DocumentController {
                             result.get("fileKey"),
                             result.get("extractedText"),
                             result.get("mrn"),
-                            result.get("documentType")
+                            result.get("documentType"),
+                            result.get("customDocName")
                     );
                 })
                 .doOnError(error -> {

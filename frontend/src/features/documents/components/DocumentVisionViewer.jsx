@@ -3,8 +3,10 @@ import { X, AlertTriangle, Brain, CheckCircle, Loader2, Edit2 } from 'lucide-rea
 import Button from '../../../components/ui/Button';
 import StatusBadge from '../../../components/ui/Badge';
 
-export default function DocumentVisionViewer({ record, onClose, onVerify, onEditFindings }) {
+export default function DocumentVisionViewer({ record, onClose, onVerify, onConfirmIdentity, onEditFindings }) {
     const [isVerifying, setIsVerifying] = useState(false);
+    const [isConfirmingIdentity, setIsConfirmingIdentity] = useState(false);
+    const identityMismatch = record.identityCheckStatus === 'mismatch' && !record.identityConfirmed;
 
     const { fileKey, blurryRegions, imageWidth, imageHeight } = record;
     
@@ -198,6 +200,43 @@ export default function DocumentVisionViewer({ record, onClose, onVerify, onEdit
                                 </div>
                             )}
 
+                            {/* Patient identity mismatch banner */}
+                            {identityMismatch && (
+                                <div className="p-4 bg-danger-50 dark:bg-danger-500/10 border border-danger-500/40 rounded-8">
+                                    <h4 className="flex items-center gap-2 text-sm font-bold text-danger-700 dark:text-danger-500 mb-2">
+                                        <AlertTriangle className="w-4 h-4" />
+                                        Patient Identity Mismatch Detected
+                                    </h4>
+                                    <ul className="text-xs text-danger-600 dark:text-danger-500 space-y-0.5 mb-2">
+                                        {(record.identityMismatches || []).map((m, i) => (
+                                            <li key={i}>
+                                                <span className="capitalize font-semibold">{m.field}</span>: document says "<strong>{m.documentValue}</strong>", patient record says "<strong>{m.patientValue}</strong>"
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <p className="text-xs text-danger-600 dark:text-danger-500 mb-2">
+                                        Double-check this document was uploaded to the correct patient before verifying its content.
+                                    </p>
+                                    {onConfirmIdentity && (
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            disabled={isConfirmingIdentity}
+                                            onClick={async () => {
+                                                setIsConfirmingIdentity(true);
+                                                try {
+                                                    await onConfirmIdentity(record.id);
+                                                } finally {
+                                                    setIsConfirmingIdentity(false);
+                                                }
+                                            }}
+                                        >
+                                            {isConfirmingIdentity ? 'Confirming...' : 'Confirm this is the correct patient'}
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Blur annotation pending banner */}
                             {blurryRegions && blurryRegions.length > 0 && (!record.blurDoctorInputs || record.blurDoctorInputs.length === 0) && (
                                 <div className="p-4 bg-warning-50 dark:bg-warning-500/10 border border-warning-500/30 rounded-8">
@@ -268,7 +307,7 @@ export default function DocumentVisionViewer({ record, onClose, onVerify, onEdit
                                             ? (record.documentType === 'LAB_REPORT' ? 'AI Summary' : 'AI Radiologist Summary')
                                             : 'Extracted Text'}
                                     </h5>
-                                    {onVerify && !record.verified && (
+                                    {onVerify && !record.verified && !identityMismatch && (
                                         <Button
                                             size="sm"
                                             disabled={isVerifying}

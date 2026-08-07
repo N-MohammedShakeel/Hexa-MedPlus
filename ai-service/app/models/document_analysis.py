@@ -25,4 +25,7 @@ class DocumentAnalysisEntity(Base):
     verified = Column(Boolean, default=False)
     needs_blur_annotation = Column(Boolean, default=False)
     document_id = Column(String, nullable=True, index=True)
+    identity_check_status = Column(String, nullable=True)  # match, mismatch, insufficient_data
+    identity_mismatches = Column(JSON, nullable=True)       # [{field, documentValue, patientValue, similarity}]
+    identity_confirmed = Column(Boolean, default=False)     # doctor confirmed this IS the right patient
     analyzed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

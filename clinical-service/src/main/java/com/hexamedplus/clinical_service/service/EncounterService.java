@@ -35,6 +35,8 @@ public class EncounterService {
                 .aiCodes(entity.getAiCodes())
                 .codingDraft(entity.getCodingDraft())
                 .revisionNote(entity.getRevisionNote())
+                .signedAt(entity.getSignedAt())
+                .signedBy(entity.getSignedBy())
                 .notes(entity.getNotes() != null ? entity.getNotes().stream().map(n ->
                     com.hexamedplus.clinical_service.dto.NoteDto.Response.builder()
                         .id(n.getId().toString())
@@ -118,7 +120,13 @@ public class EncounterService {
                     if (optional.isPresent()) {
                         EncounterEntity entity = optional.get();
                         entity.setStatus(status);
-                        
+
+                        // A resubmission always closes out the current revision cycle —
+                        // clear the note so it doesn't linger stale for the next one.
+                        if ("CODING_COMPLETE".equals(status)) {
+                            entity.setRevisionNote(null);
+                        }
+
                         if ("BILLED".equals(status)) {
                             entity.setBilledAt(java.time.LocalDateTime.now());
                             patientRepository.findById(entity.getPatientId()).ifPresent(p -> {
@@ -184,6 +192,28 @@ public class EncounterService {
                             entity.setTemperature(Double.parseDouble(String.valueOf(vitals.get("temperature"))));
                         if (vitals.containsKey("o2Sat"))
                             entity.setO2Sat(Integer.parseInt(String.valueOf(vitals.get("o2Sat"))));
+                        return Mono.fromCallable(() -> encounterRepository.save(entity))
+                                .subscribeOn(Schedulers.boundedElastic());
+                    }
+                    return Mono.empty();
+                })
+                .map(this::mapToResponse);
+    }
+
+    // Physician signs & locks the encounter — this is the real, server-enforced lock;
+    // the notes API (PatientTagNoteService.assertNotSigned) refuses further edits to
+    // any note whose encounterId points at a row with signedAt set. Auto-routes to
+    // the coding queue in the same step, matching how signing works today (just for
+    // real this time).
+    public Mono<EncounterDto.Response> signEncounter(String id, String signedBy) {
+        return Mono.fromCallable(() -> encounterRepository.findById(UUID.fromString(id)))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(optional -> {
+                    if (optional.isPresent()) {
+                        EncounterEntity entity = optional.get();
+                        entity.setSignedAt(java.time.LocalDateTime.now());
+                        entity.setSignedBy(signedBy);
+                        entity.setStatus("CODING_PENDING");
                         return Mono.fromCallable(() -> encounterRepository.save(entity))
                                 .subscribeOn(Schedulers.boundedElastic());
                     }

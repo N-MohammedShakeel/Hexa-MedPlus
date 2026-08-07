@@ -37,13 +37,21 @@ export default function EncounterNotesTab({
     handleSaveNoteComment,
     TAG_CONFIG,
     unarchivedAt,
-    patient
+    patient,
+    latestEncounter
 }) {
     const fileInputRef = useRef(null);
     const [isUploading, setIsUploading] = useState(false);
     const [editingNoteId, setEditingNoteId] = useState(null);
     const [editNoteContent, setEditNoteContent] = useState("");
     const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    // Once the encounter is signed, existing notes are permanent — but a physician can
+    // still write NEW notes (addenda) in response, e.g. to a coder's revision request.
+    const isSigned = !!latestEncounter?.signedAt;
+    const isAddendum = (note) =>
+        isSigned && note.encounterId === latestEncounter?.id &&
+        new Date(note.createdAt) > new Date(latestEncounter.signedAt);
 
     const handleUploadHistory = async (e) => {
         const file = e.target.files?.[0];
@@ -104,18 +112,23 @@ export default function EncounterNotesTab({
                                 <History className="w-2.5 h-2.5" /> Past History
                             </span>
                         )}
+                        {!isHistorical && isAddendum(note) && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-full">
+                                <Pencil className="w-2.5 h-2.5" /> Addendum
+                            </span>
+                        )}
                         {note.status && <span className="px-2 py-0.5 text-xs rounded-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400">{note.status}</span>}
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">{note.createdAt ? new Date(note.createdAt).toLocaleString() : ''}</span>
                     </div>
                     {!isLocked && !isHistorical && (
                         <div className="flex items-center gap-2">
-                            <button onClick={() => handleStartEdit(note)} className="p-1 text-neutral-400 hover:text-primary-600 rounded-6 text-xs flex items-center gap-1 font-medium" title="Edit">
+                            <button onClick={() => handleStartEdit(note)} className="p-1 text-neutral-600 dark:text-slate-400 hover:text-primary-600 rounded-6 text-xs flex items-center gap-1 font-medium" title="Edit">
                                 <Pencil className="w-3.5 h-3.5" /> Edit
                             </button>
                             <button onClick={() => {
                                 handleDeletePatientNote(note.id);
                                 logNoteDeleted(patient?.mrn, note.id);
-                            }} className="p-1 text-neutral-400 hover:text-danger-500 rounded-6" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                            }} className="p-1 text-neutral-600 dark:text-slate-400 hover:text-danger-500 rounded-6" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                     )}
                 </div>
@@ -182,9 +195,16 @@ export default function EncounterNotesTab({
                 <input type="file" ref={fileInputRef} onChange={handleUploadHistory} className="hidden" accept=".pdf,.txt,.png,.jpg,.jpeg,.dcm" />
             </div>
 
-            {!isLocked && (
+            {(!isLocked || isSigned) && (
                 <Card padding="md" className="border-primary-200 dark:border-primary-800 bg-primary-50/10 dark:bg-primary-900/5">
-                    <h4 className="text-sm font-bold text-primary-700 dark:text-primary-400 mb-3">Add Patient Note</h4>
+                    <h4 className="text-sm font-bold text-primary-700 dark:text-primary-400 mb-3">
+                        {isSigned ? "Add Addendum" : "Add Patient Note"}
+                    </h4>
+                    {isSigned && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 -mt-1">
+                            This encounter is signed — the original notes are permanent. This adds a new, separately-timestamped addendum instead.
+                        </p>
+                    )}
                     <div className="flex flex-wrap gap-2 mb-3">
                         {Object.entries(TAG_CONFIG).map(([key, cfg]) => (
                             <button key={key} onClick={() => setNoteTag(key)} className={`px-3 py-1 text-xs font-semibold rounded-full border transition-all ${noteTag === key ? cfg.color + ' shadow-sm' : 'bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:border-neutral-400'}`}>{cfg.label}</button>
@@ -211,7 +231,7 @@ export default function EncounterNotesTab({
                         <Button variant="primary" size="sm" icon={FileText} onClick={() => {
                             handleSavePatientNote();
                             logNoteCreated(patient?.mrn, noteTag);
-                        }} disabled={isSavingNote || !newNoteContent.trim()}>{isSavingNote ? "Saving..." : "Save Note"}</Button>
+                        }} disabled={isSavingNote || !newNoteContent.trim()}>{isSavingNote ? "Saving..." : isSigned ? "Save Addendum" : "Save Note"}</Button>
                     </div>
                 </Card>
             )}

@@ -68,6 +68,7 @@ export default function RecordsPage() {
             placeholder="Search archived patients, MRN..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
+            onClear={() => setSearchTerm('')}
             leftIcon={Search}
           />
         </div>

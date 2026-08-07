@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
@@ -18,16 +19,18 @@ public class DocumentEventPublisher {
     @Value("${document-service.public-url:http://localhost:8082}")
     private String publicUrl;
 
-    public void publishDocumentParsedEvent(String fileKey, String extractedText, String mrn, String documentType) {
+    public void publishDocumentParsedEvent(String fileKey, String extractedText, String mrn, String documentType, String customDocName) {
         log.info("Publishing document.parsed event for MRN: {}", mrn);
 
-        Map<String, String> payload = Map.of(
-                "fileKey", fileKey,
-                "extractedText", extractedText,
-                "mrn", mrn != null ? mrn : "UNKNOWN",
-                "documentType", documentType != null ? documentType : "UNKNOWN",
-                "fileUrl", publicUrl + "/api/documents/download?fileKey=" + fileKey
-        );
+        Map<String, String> payload = new HashMap<>();
+        payload.put("fileKey", fileKey);
+        payload.put("extractedText", extractedText);
+        payload.put("mrn", mrn != null ? mrn : "UNKNOWN");
+        payload.put("documentType", documentType != null ? documentType : "UNKNOWN");
+        payload.put("fileUrl", publicUrl + "/api/documents/download?fileKey=" + fileKey);
+        if (customDocName != null) {
+            payload.put("customDocName", customDocName);
+        }
 
         kafkaTemplate.send("document.parsed", payload);
     }

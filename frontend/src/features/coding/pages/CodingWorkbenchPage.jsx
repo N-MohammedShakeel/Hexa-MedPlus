@@ -6,15 +6,16 @@ import {
     ArrowLeft, Stethoscope, FileText, Activity, CheckCircle, XCircle,
     Edit3, ChevronDown, Sparkles, Shield, Beaker, HeartPulse,
     Brain, History, Send, Save, Search, Plus, Trash2, Clock,
-    AlertTriangle, User, ChevronRight, RefreshCw
+    AlertTriangle, User, ChevronRight, RefreshCw, X
 } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import { usePatientDetail, usePatients } from "../../../common/hooks/usePatients";
 import { usePatientEncounters, useAllEncounters } from "../../../common/hooks/useEncounters";
 import axiosInstance from "../../../config/axios";
 import { API_ENDPOINTS } from "../../../common/constants/apiEndpoints";
 import { notifySuccess, notifyError } from "../../../common/utils/toast";
+import { notificationActions } from "../../../store/slices/notificationSlice";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -269,7 +270,13 @@ function CodingList() {
                         <Search className="w-4 h-4 text-neutral-600 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                             placeholder="Search patient or MRN..."
-                            className="w-64 pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-neutral-400 dark:border-slate-700 rounded-6 text-sm dark:text-slate-200 focus:outline-none focus:border-primary-500" />
+                            className="w-64 pl-9 pr-8 py-2 bg-white dark:bg-slate-800 border border-neutral-400 dark:border-slate-700 rounded-6 text-sm dark:text-slate-200 focus:outline-none focus:border-primary-500" />
+                        {search && (
+                            <button type="button" onClick={() => setSearch('')} title="Clear"
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200">
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -328,6 +335,7 @@ function CodingList() {
 
 function CodingDetail({ patientId }) {
     const navigate = useNavigate();
+    const dispatch = useDispatch();
     const { patient, loading: patientLoading } = usePatientDetail(patientId);
     const { encounters, loading: encountersLoading } = usePatientEncounters(patientId);
     const reduxSuggestedCodes = useSelector(state => state.clinical.suggestedCodes);
@@ -523,6 +531,11 @@ function CodingDetail({ patientId }) {
             await axiosInstance.put(API_ENDPOINTS.ENCOUNTERS.UPDATE_STATUS(latestEncounter.id), { status: 'CODING_COMPLETE' });
             logActivity("SUBMITTED_FOR_REVIEW", null, `Submitted ${allApproved.length} approved codes for physician review`);
             showToast("Submitted for physician review!");
+            dispatch(notificationActions.addNotification({
+                title: "Coding Submitted for Review",
+                message: `${patient?.name || 'Patient'}: ${allApproved.length} approved code(s) sent to the physician for review.`,
+                type: "success",
+            }));
             setTimeout(() => navigate('/coding'), 1500);
         } catch (e) {
             showToast("Failed to submit", "error");

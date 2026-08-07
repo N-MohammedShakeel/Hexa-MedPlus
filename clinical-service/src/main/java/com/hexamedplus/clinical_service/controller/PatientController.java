@@ -36,6 +36,11 @@ public class PatientController {
         return clinicalService.createPatient(request);
     }
 
+    @PutMapping("/{id}")
+    public Mono<PatientDto.Response> updatePatient(@PathVariable String id, @RequestBody PatientDto.UpdateRequest request) {
+        return clinicalService.updatePatient(id, request);
+    }
+
     @PutMapping("/{id}/archive")
     public Mono<PatientDto.Response> archivePatient(@PathVariable String id) {
         return clinicalService.archivePatient(id);

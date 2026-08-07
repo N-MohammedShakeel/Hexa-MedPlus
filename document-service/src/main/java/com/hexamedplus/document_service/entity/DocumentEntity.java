@@ -23,6 +23,7 @@ public class DocumentEntity {
     
     private String targetMrn; // Which patient this belongs to
     private String specialty;  // Medical specialty tag (e.g., Cardiology, Endocrinology)
+    private String customDocName; // Doctor-typed display name, used for "Other Documents" uploads
 
     private LocalDateTime uploadedAt;
 

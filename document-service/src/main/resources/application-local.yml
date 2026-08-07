@@ -8,9 +8,11 @@ spring:
     hibernate:
       ddl-auto: update
   datasource:
-    url: jdbc:postgresql://localhost:5432/hexaware
+    # Points at the pgvector/pgvector Postgres container from docker-compose.infra.yml
+    # (host port 5433 -> container 5432), so every local service shares one database.
+    url: jdbc:postgresql://localhost:5433/hexamed_db
     username: postgres
-    password: MSpostgres@1
+    password: password
     driver-class-name: org.postgresql.Driver
   kafka:
     bootstrap-servers: localhost:9092

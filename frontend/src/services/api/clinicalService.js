@@ -23,6 +23,10 @@ export const clinicalService = {
     const response = await apiClient.post('/patients', patientData);
     return response.data;
   },
+  updatePatient: async (id, updates) => {
+    const response = await apiClient.put(`/patients/${id}`, updates);
+    return response.data;
+  },
   archivePatient: async (id) => {
     const response = await apiClient.put(`/patients/${id}/archive`);
     return response.data;

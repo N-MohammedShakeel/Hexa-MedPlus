@@ -66,6 +66,10 @@ public class EncounterEntity {
     @Column(name = "signed_at")
     private LocalDateTime signedAt;
 
+    /** Name/identity of the physician who signed */
+    @Column(name = "signed_by")
+    private String signedBy;
+
     /** Timestamp when encounter was marked as billed */
     @Column(name = "billed_at")
     private LocalDateTime billedAt;

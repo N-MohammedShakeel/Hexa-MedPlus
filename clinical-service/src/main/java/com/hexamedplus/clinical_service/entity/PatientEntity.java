@@ -33,7 +33,16 @@ public class PatientEntity {
     
     @Column(length = 100)
     private String department;
-    
+
+    /**
+     * Real, physician-owned diagnosis field — separate from `allergies` (which
+     * previously had "Primary Diagnosis" stuffed into it as a single-element list,
+     * conflating two distinct clinical concepts). Editable in Patient Management,
+     * or settable from an AI-suggested diagnosis via "Apply to Patient Record".
+     */
+    @Column(name = "primary_diagnosis", length = 255)
+    private String primaryDiagnosis;
+
     @Column(length = 50)
     private String status;
     

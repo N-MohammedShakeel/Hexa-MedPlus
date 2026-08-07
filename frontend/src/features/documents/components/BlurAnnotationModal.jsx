@@ -91,13 +91,13 @@ export default function BlurAnnotationModal({ doc, docAiResult, setDocAiResult, 
         verified: false
       }));
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
-      onAnalysisComplete?.(doc?.fileKey);
+      onAnalysisComplete?.(doc?.fileKey, true);
     } catch (e) {
       console.error('Failed to reanalyze document', e);
       notifyError('Failed to start analysis.');
       setAnalyzingStates(prev => { const next = {...prev}; delete next[docAiResult.id]; return next; });
       setIsAnalyzing(false);
-      onAnalysisComplete?.(doc?.fileKey);
+      onAnalysisComplete?.(doc?.fileKey, false);
     }
   };
 

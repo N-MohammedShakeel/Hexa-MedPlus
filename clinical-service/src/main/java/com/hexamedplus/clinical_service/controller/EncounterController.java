@@ -48,16 +48,26 @@ public class EncounterController {
         return encounterService.createEncounter(request);
     }
 
+    // PUT /api/encounters/{id}/sign — real signing: sets signedAt/signedBy (the actual
+    // lock the notes API enforces) and auto-routes to the coding queue in one step.
+    @PutMapping("/{id}/sign")
+    public Mono<EncounterDto.Response> signEncounter(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String signedBy = body.getOrDefault("signedBy", "Physician");
+        Mono.fromRunnable(() -> logActivity(id, signedBy, "USER", "ENCOUNTER_SIGNED", null,
+                "Encounter signed by " + signedBy + " — sent to coding queue"))
+            .subscribeOn(Schedulers.boundedElastic()).subscribe();
+        return encounterService.signEncounter(id, signedBy);
+    }
+
     // PUT /api/encounters/{id}/status
     @PutMapping("/{id}/status")
     public Mono<EncounterDto.Response> updateEncounterStatus(@PathVariable String id, @RequestBody Map<String, String> body) {
         String newStatus = body.get("status");
-        // Auto-log status transitions as activity events
+        // Auto-log status transitions as activity events. Signing itself now goes
+        // through the dedicated /sign endpoint above — a generic status PUT no longer
+        // implies a signature, so it's not special-cased/logged as ENCOUNTER_SIGNED here.
         Mono.fromRunnable(() -> {
-            if ("CODING_PENDING".equals(newStatus)) {
-                logActivity(id, "System", "SYSTEM", "ENCOUNTER_SIGNED", null,
-                        "Encounter signed by physician — sent to coding queue");
-            } else if ("CODING_COMPLETE".equals(newStatus)) {
+            if ("CODING_COMPLETE".equals(newStatus)) {
                 logActivity(id, "Medical Coder", "USER", "SUBMITTED_FOR_REVIEW", null,
                         "Codes submitted for physician review");
             } else if ("BILLING_READY".equals(newStatus)) {

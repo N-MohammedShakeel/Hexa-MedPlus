@@ -189,6 +189,7 @@ export default function AuditTrailsPage() {
             placeholder="Search by user, details, or MRN..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onClear={() => setSearchTerm('')}
             leftIcon={Search}
           />
         </div>
@@ -222,6 +223,7 @@ export default function AuditTrailsPage() {
             placeholder="Search user..."
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
+            onClear={() => setUserFilter('')}
             leftIcon={Search}
           />
         </div>

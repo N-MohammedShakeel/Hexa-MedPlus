@@ -1,17 +1,16 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { selectAllPatients, fetchPatients, selectPatientStatus, archivePatient } from "../../../store/slices/patientSlice";
+import { selectAllPatients, fetchPatients, selectPatientStatus, archivePatient, updatePatient } from "../../../store/slices/patientSlice";
 import { useAllEncounters } from "../../../common/hooks/useEncounters";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
 import StatusBadge from "../../../components/ui/Badge";
-import { Plus, Search, Download, MoreVertical, Activity, X, Tag, FileText, Pill, History, MessageSquare, ChevronDown, Check, Archive } from "lucide-react";
+import { Plus, Search, Download, Pencil, Activity, Archive } from "lucide-react";
 import Input from "../../../components/ui/Input";
 import EmptyState from "../../../components/ui/EmptyState";
+import Modal from "../../../components/ui/Modal/Modal";
 import AddPatientModal from "../components/AddPatientModal";
-import PatientNotesDrawer from "../components/PatientNotesDrawer";
-import axiosInstance from "../../../config/axios";
 import { logPatientArchived, logRecordExported } from "../../../services/api/auditService";
 import { useConfirm } from "../../../contexts/ConfirmContext";
 import { notifySuccess } from "../../../common/utils/toast";
@@ -47,9 +46,34 @@ export default function PatientManagementPage() {
   const [statusFilter,    setStatusFilter]    = useState("All Status");
   const [genderFilter,    setGenderFilter]    = useState("All Genders");
   const [currentPage,     setCurrentPage]     = useState(1);
-  const [notesPatient,    setNotesPatient]    = useState(null); // patient for notes drawer
+  const [editingPatientId, setEditingPatientId] = useState(null); // patient.id whose edit popover is open
+  const [editDept,        setEditDept]        = useState("");
+  const [editDiagnosis,   setEditDiagnosis]   = useState("");
+  const [isSavingEdit,    setIsSavingEdit]    = useState(false);
   const itemsPerPage = 10;
   const confirm = useConfirm();
+
+  const DEPARTMENT_OPTIONS = ["General Medicine","Cardiology","Endocrinology","Pulmonology","Oncology","Neurology"];
+
+  const startEditPatient = (patient, e) => {
+    e.stopPropagation();
+    setEditingPatientId(patient.id);
+    setEditDept(patient.department || DEPARTMENT_OPTIONS[0]);
+    setEditDiagnosis(patient.primaryDiagnosis === 'Pending Review' ? '' : (patient.primaryDiagnosis || ''));
+  };
+
+  const saveEditPatient = async (e) => {
+    e.stopPropagation();
+    setIsSavingEdit(true);
+    try {
+      await dispatch(updatePatient(editingPatientId, { department: editDept, primaryDiagnosis: editDiagnosis }));
+      setEditingPatientId(null);
+    } catch {
+      // updatePatient thunk already surfaced a toast — keep the popover open to retry
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   useEffect(() => {
     if (status === "idle") dispatch(fetchPatients());
@@ -113,6 +137,8 @@ export default function PatientManagementPage() {
     });
   }, [allPatients, searchTerm, departmentFilter, statusFilter, genderFilter]);
 
+  const editingPatient = allPatients.find(p => p.id === editingPatientId) || null;
+
   const totalPages       = Math.ceil(filteredPatients.length / itemsPerPage);
   const paginatedPatients = filteredPatients.slice(
     (currentPage - 1) * itemsPerPage,
@@ -143,6 +169,7 @@ export default function PatientManagementPage() {
             placeholder="Search patients, MRN..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
+            onClear={() => setSearchTerm('')}
             leftIcon={Search}
           />
         </div>
@@ -249,11 +276,11 @@ export default function PatientManagementPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={e => { e.stopPropagation(); setNotesPatient(patient); }}
+                          onClick={e => startEditPatient(patient, e)}
                           className="p-1.5 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors"
-                          title="Clinical Notes & Tags"
+                          title="Edit Department & Primary Diagnosis"
                         >
-                          <MoreVertical className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
+                          <Pencil className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
                         </button>
                         <button
                           onClick={async e => {
@@ -309,13 +336,42 @@ export default function PatientManagementPage() {
 
       <AddPatientModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
 
-      {/* Clinical Notes Drawer */}
-      {notesPatient && (
-        <PatientNotesDrawer
-          patient={notesPatient}
-          onClose={() => setNotesPatient(null)}
-        />
-      )}
+      <Modal
+        isOpen={!!editingPatientId}
+        onClose={() => setEditingPatientId(null)}
+        title={editingPatient ? `Edit ${editingPatient.name}` : 'Edit Patient'}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">Department</label>
+            <select
+              autoFocus
+              value={editDept}
+              onChange={e => setEditDept(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-neutral-400 dark:border-slate-600 rounded-6 bg-white dark:bg-slate-900 text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              {DEPARTMENT_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-neutral-700 dark:text-slate-300 mb-1.5">Primary Diagnosis</label>
+            <input
+              value={editDiagnosis}
+              onChange={e => setEditDiagnosis(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveEditPatient(e)}
+              placeholder="e.g. Type 2 Diabetes"
+              className="w-full px-3 py-2 text-sm border border-neutral-400 dark:border-slate-600 rounded-6 bg-white dark:bg-slate-900 text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-neutral-200 dark:border-slate-700">
+            <button onClick={() => setEditingPatientId(null)} className="px-3 py-1.5 text-xs font-semibold text-neutral-600 dark:text-slate-400 hover:text-neutral-900 dark:hover:text-slate-200">Cancel</button>
+            <button onClick={saveEditPatient} disabled={isSavingEdit} className="px-3 py-1.5 text-xs font-semibold text-white bg-primary-500 hover:bg-primary-600 rounded-6 disabled:opacity-50">
+              {isSavingEdit ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

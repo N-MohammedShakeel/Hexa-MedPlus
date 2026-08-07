@@ -250,6 +250,11 @@ export const executeAiWorkflow = (payload, encounterId) => {
       const response = await axiosInstance.post('/api/ai/workflow/execute', payload);
       dispatch(encounterActions.setAiWorkflowResult({ encounterId, result: response.data }));
       toast.success("AI Workflow executed");
+      dispatch(notificationActions.addNotification({
+        title: "AI Insights Generated",
+        message: "Clinical summary, diagnosis, coding, and pathway insights are ready to review.",
+        type: "success",
+      }));
       return response.data;
     } catch (error) {
       toast.error("AI workflow failed");
