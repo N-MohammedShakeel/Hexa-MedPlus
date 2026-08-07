@@ -51,7 +51,7 @@ export default function AuthLayout() {
       </div>
 
       {/* Right side: Auth Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-12 relative">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-12 relative bg-white">
         <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-2 flex items-center justify-center shadow-inner border-t border-primary-300">
             <div className="flex items-start">

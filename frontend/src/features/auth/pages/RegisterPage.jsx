@@ -4,6 +4,8 @@ import Button from "../../../components/ui/Button";
 import Input from "../../../components/ui/Input";
 import { User, Mail, Lock, Building, ArrowRight, ShieldCheck } from "lucide-react";
 
+import { notifySuccess } from "../../../common/utils/toast";
+
 export default function RegisterPage() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
@@ -25,17 +27,18 @@ export default function RegisterPage() {
         // Simulate registration request
         setTimeout(() => {
             setLoading(false);
+            notifySuccess("Access request submitted! An administrator will review your application.");
             navigate("/login");
-        }, 1500);
+        }, 1200);
     };
 
     return (
         <div>
             <div className="flex items-center gap-2 mb-2">
                 <ShieldCheck className="w-6 h-6 text-primary-500 dark:text-primary-400" />
-                <h2 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Request Access</h2>
+                <h2 className="text-3xl font-bold text-neutral-900">Request Access</h2>
             </div>
-            <p className="text-neutral-600 dark:text-neutral-400 mb-8 leading-relaxed">
+            <p className="text-neutral-600 mb-8 leading-relaxed">
                 Join Hexa MedPlus to streamline your clinical workflows with AI.
             </p>
 
@@ -96,8 +99,8 @@ export default function RegisterPage() {
 
                 <div className="flex items-start gap-2 pt-2 pb-2">
                     <input type="checkbox" id="terms" required className="w-4 h-4 mt-0.5 rounded border-neutral-400 dark:border-neutral-600 dark:bg-neutral-800 text-primary-600 focus:ring-primary-500" />
-                    <label htmlFor="terms" className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
-                        I agree to the <a href="#" className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">Terms of Service</a> and <a href="#" className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">Privacy Policy</a>, and consent to HIPAA data processing guidelines.
+                    <label htmlFor="terms" className="text-xs text-neutral-600 leading-relaxed">
+                        I agree to the <a href="#" className="font-semibold text-primary-600 hover:underline">Terms of Service</a> and <a href="#" className="font-semibold text-primary-600 hover:underline">Privacy Policy</a>, and consent to HIPAA data processing guidelines.
                     </label>
                 </div>
 
@@ -112,10 +115,10 @@ export default function RegisterPage() {
                 </Button>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-neutral-200 dark:border-neutral-700">
-                <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
+            <div className="mt-8 pt-8 border-t border-neutral-200">
+                <p className="text-center text-sm text-neutral-600">
                     Already have an account?{" "}
-                    <Link to="/login" className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">
+                    <Link to="/login" className="font-semibold text-primary-600 hover:underline">
                         Sign in instead
                     </Link>
                 </p>

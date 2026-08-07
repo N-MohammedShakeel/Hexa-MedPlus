@@ -5,8 +5,8 @@ const getInitialTheme = () => {
   if (savedTheme) {
     return savedTheme;
   }
-  // Default to system preference if no saved theme
-  return "system";
+  // Default to light mode
+  return "light";
 };
 
 const initialState = {
