@@ -180,7 +180,7 @@ async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db))
 
         full_response = ""
         try:
-            if state.GLOBAL_AI_PREFERENCE == "qwen" and settings.CUSTOM_LLM_BASE_URL:
+            if state.GLOBAL_LLM_PREFERENCE == "qwen" and settings.CUSTOM_LLM_BASE_URL:
                 from openai import AsyncOpenAI
                 client = AsyncOpenAI(base_url=settings.CUSTOM_LLM_BASE_URL, api_key="not-needed")
                 stream = await client.chat.completions.create(

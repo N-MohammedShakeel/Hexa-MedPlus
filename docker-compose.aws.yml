@@ -187,6 +187,7 @@ services:
       - clinical-service
       - document-service
       - ai-service
+      - redis
     networks:
       - hexamed-net
     logging:

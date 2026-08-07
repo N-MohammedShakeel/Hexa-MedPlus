@@ -429,10 +429,10 @@ export default function DashboardPage() {
           <Card>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold text-neutral-900 dark:text-slate-100">
-                Patient Visits
+                Patient Age Distribution
               </h3>
               <span className="px-2 py-0.5 bg-neutral-200 dark:bg-slate-700 rounded-6 text-xs font-semibold text-neutral-800 dark:text-slate-300">
-                This Week
+                By Age Group
               </span>
             </div>
             <div className="h-[240px] w-full">

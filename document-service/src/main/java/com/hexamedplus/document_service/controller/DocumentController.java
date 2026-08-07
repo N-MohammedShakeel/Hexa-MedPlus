@@ -21,6 +21,7 @@ import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.http.codec.multipart.FormFieldPart;
 import org.springframework.http.codec.multipart.Part;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
@@ -89,7 +90,7 @@ public class DocumentController {
     @DeleteMapping("/{id}")
     public Mono<ResponseEntity<Void>> deleteDocument(@PathVariable String id) {
         return Mono.fromRunnable(() -> {
-            documentRepository.findById(java.util.UUID.fromString(id)).ifPresent(doc -> {
+            documentRepository.findById(parseUuid(id)).ifPresent(doc -> {
                 try {
                     storageService.deleteFile(doc.getFileKey());
                 } catch (Exception e) {
@@ -108,7 +109,7 @@ public class DocumentController {
     @org.springframework.web.bind.annotation.PutMapping("/{id}/status")
     public Mono<ResponseEntity<Void>> updateDocumentStatus(@PathVariable String id, @RequestParam String status) {
         return Mono.fromRunnable(() -> {
-            documentRepository.findById(java.util.UUID.fromString(id)).ifPresent(doc -> {
+            documentRepository.findById(parseUuid(id)).ifPresent(doc -> {
                 doc.setStatus(status);
                 documentRepository.save(doc);
             });
@@ -187,7 +188,7 @@ public class DocumentController {
             @RequestPart(value = "expiryDate", required = false) String expiryDate,
             @RequestParam(value = "jobId", required = false) String jobId) {
 
-        return Mono.fromCallable(() -> documentRepository.findById(java.util.UUID.fromString(id))
+        return Mono.fromCallable(() -> documentRepository.findById(parseUuid(id))
                         .orElseThrow(() -> new java.util.NoSuchElementException("Document not found: " + id)))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(oldDoc -> processUpload(
@@ -199,7 +200,7 @@ public class DocumentController {
     @GetMapping("/{id}/versions")
     public Mono<ResponseEntity<java.util.List<DocumentEntity>>> getVersionHistory(@PathVariable String id) {
         return Mono.fromCallable(() -> {
-                    DocumentEntity current = documentRepository.findById(java.util.UUID.fromString(id))
+                    DocumentEntity current = documentRepository.findById(parseUuid(id))
                             .orElseThrow(() -> new java.util.NoSuchElementException("Document not found: " + id));
 
                     java.util.List<DocumentEntity> chain = new java.util.ArrayList<>();
@@ -238,6 +239,20 @@ public class DocumentController {
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(ResponseEntity::ok);
+    }
+
+    // A malformed/non-UUID path id (e.g. a stray file key or typo) previously threw a raw
+    // IllegalArgumentException out of UUID.fromString inside a reactive lambda — Reactor
+    // turns that into an error signal, and Spring WebFlux's default handler maps an
+    // unrecognized exception type to a 500. ResponseStatusException is what it actually
+    // knows how to map to a clean 4xx, so parse through here instead of calling
+    // UUID.fromString directly.
+    private UUID parseUuid(String id) {
+        try {
+            return UUID.fromString(id);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document id: " + id);
+        }
     }
 
     private java.time.LocalDate parseExpiry(String expiryDate) {

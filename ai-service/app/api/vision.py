@@ -18,6 +18,7 @@ from app.utils.blur_detector import check_image_blur
 from app.utils.identity_matcher import check_patient_identity
 from app.utils.notes_client import push_document_note
 import app.core.state as state
+from app.core.json_utils import extract_first_json_object
 import os
 
 router = APIRouter()
@@ -83,6 +84,12 @@ The JSON schema is:
 }
 """
 
+# Bracket-depth-aware JSON extraction shared with app/graph/nodes/agents.py and
+# app/core/guardrails.py, so this fix stays applied consistently everywhere an
+# LLM response gets scraped for its first JSON object.
+_extract_first_json_object = extract_first_json_object
+
+
 def _parse_llm_json_response(raw_text: str) -> dict:
     """
     Cleans markdown fences, extracts the {...} block, fixes stray backslash
@@ -96,9 +103,7 @@ def _parse_llm_json_response(raw_text: str) -> dict:
     content_str = re.sub(r"^```(?:json)?", "", raw_text.strip(), flags=re.MULTILINE)
     content_str = re.sub(r"```$", "", content_str.strip(), flags=re.MULTILINE).strip()
 
-    match = re.search(r"\{.*\}", content_str, re.DOTALL)
-    if match:
-        content_str = match.group(0)
+    content_str = _extract_first_json_object(content_str)
 
     # Fix invalid backslash escapes (e.g. \< or \% or \ space) that LLMs sometimes generate
     content_str = re.sub(r'\\(?!["\\/bfnrtu])', lambda m: '\\\\', content_str)
@@ -158,7 +163,10 @@ async def call_aws_bedrock_vision(image_bytes: bytes, image_type: str, prompt_te
 
         response = await asyncio.to_thread(_invoke_bedrock)
         output_text = response['output']['message']['content'][0]['text']
-        return _parse_llm_json_response(output_text)
+        parsed = _parse_llm_json_response(output_text)
+        if isinstance(parsed, dict):
+            parsed['_model_used'] = model_id
+        return parsed
     except Exception as e:
         log_error(f"AWS Bedrock Vision call failed ({model_id}): {e}")
         return {"api_error": f"AWS Bedrock Vision failed: {str(e)}"}
@@ -187,7 +195,10 @@ async def call_aws_bedrock_text(prompt_text: str, model_id: str = "amazon.nova-p
 
         response = await asyncio.to_thread(_invoke_bedrock)
         output_text = response['output']['message']['content'][0]['text']
-        return _parse_llm_json_response(output_text)
+        parsed = _parse_llm_json_response(output_text)
+        if isinstance(parsed, dict):
+            parsed['_model_used'] = model_id
+        return parsed
     except Exception as e:
         log_error(f"AWS Bedrock text call failed ({model_id}): {e}")
         return {"api_error": f"AWS Bedrock text failed: {str(e)}"}
@@ -241,7 +252,10 @@ async def analyze_image_with_vision_ai(image_bytes: bytes, image_type: str = "jp
             if response.status_code == 200:
                 result = response.json()
                 content_str = result["choices"][0]["message"]["content"]
-                return _parse_llm_json_response(content_str)
+                parsed = _parse_llm_json_response(content_str)
+                if isinstance(parsed, dict):
+                    parsed['_model_used'] = "meta/llama-3.2-90b-vision-instruct"
+                return parsed
             else:
                 log_error(f"[!] API Error: {response.text}")
                 return {"api_error": response.text, "status_code": response.status_code}
@@ -307,21 +321,23 @@ OCR Text:
                 
                 content_str = re.sub(r"^```(?:json)?", "", content_str.strip(), flags=re.MULTILINE)
                 content_str = re.sub(r"```$", "", content_str.strip(), flags=re.MULTILINE).strip()
-                match = re.search(r"\{.*\}", content_str, re.DOTALL)
-                if match:
-                    content_str = match.group(0)
-                    
+                content_str = _extract_first_json_object(content_str)
+
                 content_str = re.sub(r'\\(?!["\\/bfnrtu])', lambda m: '\\\\', content_str)
                     
                 try:
                     parsed = json.loads(content_str, strict=False)
                     if isinstance(parsed, str):
                         parsed = json.loads(parsed, strict=False)
+                    if isinstance(parsed, dict):
+                        parsed['_model_used'] = "meta/llama-3.1-70b-instruct"
                     return parsed
                 except json.JSONDecodeError:
                     try:
                         repaired = repair_json(content_str, return_objects=True)
                         if repaired:
+                            if isinstance(repaired, dict):
+                                repaired['_model_used'] = "meta/llama-3.1-70b-instruct"
                             return repaired
                         else:
                             raise ValueError("json_repair returned empty")
@@ -384,19 +400,21 @@ async def structure_clinical_note_with_llama(ocr_text: str, doc_type: str = "OTH
                 raw = result["choices"][0]["message"]["content"]
                 raw = re.sub(r"^```(?:json)?", "", raw.strip(), flags=re.MULTILINE)
                 raw = re.sub(r"```$", "", raw.strip(), flags=re.MULTILINE).strip()
-                m = re.search(r"\{.*\}", raw, re.DOTALL)
-                if m:
-                    raw = m.group(0)
+                raw = _extract_first_json_object(raw)
                 raw = re.sub(r'\\(?!["\\\\/bfnrtu])', lambda x: "\\\\", raw)
                 try:
                     parsed = json.loads(raw, strict=False)
                     if isinstance(parsed, str):
                         parsed = json.loads(parsed, strict=False)
+                    if isinstance(parsed, dict):
+                        parsed['_model_used'] = "meta/llama-3.1-70b-instruct"
                     return parsed
                 except Exception:
                     try:
                         from json_repair import repair_json
                         repaired = repair_json(raw, return_objects=True)
+                        if isinstance(repaired, dict):
+                            repaired['_model_used'] = "meta/llama-3.1-70b-instruct"
                         return repaired if repaired else {}
                     except Exception as e2:
                         log_error("[!] Failed to parse clinical note JSON: " + str(e2))

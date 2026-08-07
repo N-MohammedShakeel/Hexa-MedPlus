@@ -20,21 +20,33 @@ this cost-effective" review)
 
 | Component | Rate | Cost if running 24/7 for a day |
 |---|---|---|
-| EC2 `t3.medium` | ~$0.05/hr | ~$1.20 |
+| EC2 `t3.large` | ~$0.10/hr | ~$2.40 |
 | Application Load Balancer | ~$0.025/hr + LCU (negligible at demo traffic) | ~$0.60 |
 | S3 (frontend build + a handful of documents) | pennies | <$0.05 |
 | CloudFront (low request volume) | pennies, likely inside free tier | <$0.05 |
 | SSM Parameter Store (Standard tier, <10k params) | **free**, no request-rate cost at this scale | $0 |
-| CloudWatch Logs (4 small containers, a few days) | $0.50/GB ingested + $0.03/GB stored, likely inside free tier | <$0.10 |
+| CloudWatch Logs (5 small containers, a few days) | $0.50/GB ingested + $0.03/GB stored, likely inside free tier | <$0.10 |
 | Data transfer out | a few cents for a demo audience | <$0.10 |
-| **Total while running** | | **~$2/day** |
-| **While the EC2 instance is stopped** | | **~$0** (only EBS storage, ~$0.003/day for 20GB) |
+| **Total while running** | | **~$3.20/day** |
+| **While the EC2 instance is stopped** | | **~$0** (only EBS storage, ~$0.004/day for 30GB) |
 
 $50 comfortably covers a rehearsal day + demo day + buffer even leaving
-everything running continuously for **2–3 weeks**. The actual risk to the
+everything running continuously for **~2 weeks**. The actual risk to the
 budget isn't the architecture, it's forgetting to stop the instance/delete the
 ALB afterward — see **Teardown** at the end, do it every time you're done for
 the day, not just after the final demo.
+
+**Why `t3.large` (8GB) and not `t3.medium` (4GB) as the starting point now**:
+this box runs 3 unbounded-heap JVMs (each defaults to claiming up to ~25% of
+visible memory) plus Postgres plus Kafka plus Redis plus `ai-service`'s
+Python process, all on one instance. `ai-service` now *actually* loads
+`sentence-transformers`/PyTorch at runtime (the Hybrid RAG cross-encoder
+reranker) — previously that dependency sat in `requirements.txt` unused,
+so it never cost real memory; now the first RAG query after a fresh deploy
+imports it for real (typically 300–500MB+ just for the library, before model
+weights). `t3.medium` (4GB) was already a tight fit before that; it's a
+likely OOM now. Resize back down only if you've confirmed headroom under
+real load.
 
 **What Gemini's original doc got right**: correctly skipped a NAT Gateway
 (would have been the single biggest recurring cost) and MSK (Kafka self-hosted
@@ -80,11 +92,12 @@ NAT needed since there's no RDS to hide anymore):
 
 ## 2. Launch the EC2 instance
 
-- AMI: Amazon Linux 2023, instance type **`t3.medium`** (2 vCPU / 4GB).
-  `ai-service` pulls in `sentence-transformers` (transitively PyTorch) for
-  embeddings/NER — if you see it getting OOM-killed under load, resize to
-  `t3.large` (8GB); start at `t3.medium` for cost, it's a one-click resize
-  later.
+- AMI: Amazon Linux 2023, instance type **`t3.large`** (2 vCPU / 8GB).
+  `ai-service` actually loads `sentence-transformers` (transitively PyTorch)
+  at runtime now — the Hybrid RAG cross-encoder reranker, plus GLiNER for PHI
+  redaction — stacked with 3 unbounded-heap JVMs, Postgres, Kafka, and Redis
+  all on the same box. `t3.medium` (4GB) is a likely OOM; resize down only
+  after confirming headroom under real load (`docker stats` on the instance).
 - Attach `hexamed-ec2-sg`.
 - Attach an IAM **instance role** with `AmazonSSMManagedInstanceCore` (for
   Session Manager access instead of opening SSH broadly) — S3 access is
@@ -202,6 +215,14 @@ Do **not** reuse the account-wide keys from your local `.env` — these are
 fresh values for this instance, matching the point of a dedicated IAM user
 in step 4.
 
+**`cors-extra-origin` must include the `https://` scheme.** The gateway's CORS
+allow-list (`api-gateway`'s `application-docker.yml`) does an exact string
+match against the browser's `Origin` header, which always includes the
+protocol — `d1234abcd.cloudfront.net` alone (as the CloudFront console
+sometimes displays it, without the scheme) will never match, and every
+request from the deployed frontend will fail CORS silently. Always the full
+`https://d1234abcd.cloudfront.net`.
+
 **6b. Generate `.env` on the EC2 instance from SSM** (repo root, every time
 you deploy or redeploy — the instance role's `ssm:GetParameter*` permission
 from step 2 is what makes this work with zero credentials on the box):
@@ -273,6 +294,31 @@ curl http://<ALB-DNS-name>/actuator/health
 Then open the CloudFront URL in a browser, log in with one of the mock users
 from `LOCAL_SETUP.md`, and upload a test document to confirm S3 + Kafka + the
 AI pipeline are all actually wired end to end, not just "containers are up."
+
+**Also verify (added since the base runbook was written):**
+- **Roles**: log in as each of the 3 mock users (`ms@hospital.com` /
+  `coder@hospital.com` / `admin@hospital.com`) and confirm the sidebar shows
+  a different set of pages for each — if every role sees the same nav, the
+  `X-User-Role` header isn't reaching `clinical-service`/`document-service`
+  (check `aws logs tail /hexamed/clinical-service --follow` for `403`s or
+  filter errors).
+- **Rate limiting**: fire a quick burst at an `/api/ai/**` endpoint (e.g.
+  hammer the chat send button a dozen times fast) and confirm you eventually
+  get an HTTP 429 — if you never do, the gateway isn't reaching Redis
+  (`docker compose -f docker-compose.aws.yml logs api-gateway | grep -i redis`,
+  or confirm `redis` shows `Up` in `docker compose ps`).
+- **Encounter state machine**: from the Coding Workbench, try to trigger an
+  out-of-order transition (e.g. mark something "Billed" before it's been
+  approved for billing) and confirm it's rejected (HTTP 409) rather than
+  silently succeeding.
+- **First RAG query is slow — that's expected, once**: the cross-encoder
+  reranker model (~90MB) downloads from Hugging Face on its first real use
+  per container lifetime, not at container startup. The first protocol
+  search or AI-insight generation after a fresh deploy will have a one-time
+  extra delay (typically single-digit seconds) while it downloads; every
+  query after that is fast. Requires the instance to have outbound internet
+  access, which it already needs for pulling API calls to NVIDIA/Bedrock, so
+  this isn't a new networking requirement.
 
 ## Teardown (do this after every session, not just the final one)
 

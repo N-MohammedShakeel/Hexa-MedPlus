@@ -10,6 +10,10 @@ spring:
         jwt:
           # Gateway will hit this URL to download Keycloak's public key to verify tokens locally
           issuer-uri: http://keycloak:8080/realms/hexa-medplus
+  data:
+    redis:
+      host: redis
+      port: 6379
   cloud:
     gateway:
       httpclient:
@@ -20,14 +24,37 @@ spring:
           uri: http://clinical-service:8081
           predicates:
             - Path=/api/patients/**, /api/encounters/**, /api/notes/**, /api/analytics/**, /api/clinical/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@userKeyResolver}"
         - id: document-service
           uri: http://document-service:8082
           predicates:
             - Path=/api/documents/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@userKeyResolver}"
         - id: ai-service
           uri: http://ai-service:8083
           predicates:
             - Path=/api/ai/**
+          filters:
+            # Tighter limit here — this is the route that costs real money per
+            # request (NVIDIA NIM / AWS Bedrock calls). 1/sec sustained with a
+            # burst of 10 covers legitimate interactive use (e.g. uploading a
+            # batch of documents) while stopping a retry loop or bug from
+            # running the AI bill up unchecked.
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 10
+                key-resolver: "#{@userKeyResolver}"
       globalcors:
         cors-configurations:
           '[/**]':

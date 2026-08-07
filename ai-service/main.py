@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -7,16 +8,26 @@ from app.api.preferences import router as preferences_router
 from app.api.vision import router as vision_router
 from app.api.chat import router as chat_router
 from app.api.rag import router as rag_router
-from app.core.db import engine, Base
+from app.core.db import engine, Base, AsyncSessionLocal
 import app.models.chat  # ensure chat tables are created
 import app.models.document_analysis  # ensure document_analysis table is created
+import app.models.ai_preference  # ensure ai_preferences table is created
+import app.core.state as state
+from app.models.ai_preference import AiPreferenceEntity
 
 app = FastAPI(title="Hexa MedPlus AI Engine", version="1.0.0")
 
+# The frontend authenticates via `Authorization: Bearer <jwt>` (see
+# frontend/src/config/axios.js), never cookies/withCredentials, so credentialed
+# CORS requests are never actually needed here. allow_credentials is left off
+# accordingly, and allow_origins is configurable (mirroring api-gateway's
+# CORS_EXTRA_ORIGIN pattern) instead of a bare wildcard.
+_extra_origins = [o.strip() for o in os.environ.get("AI_SERVICE_CORS_ORIGINS", "").split(",") if o.strip()]
+_default_origins = ["http://localhost:3000", "http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_default_origins + _extra_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -37,11 +48,35 @@ async def startup():
             "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR NOT NULL DEFAULT 'general'",
             "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_id VARCHAR",
             "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS context_label VARCHAR",
+            # Hybrid RAG: full-text index backing the BM25/keyword half of hybrid
+            # search (see app/core/rag.py's _keyword_search_raw). GENERATED ALWAYS
+            # ... STORED backfills every existing row automatically at ALTER TABLE
+            # time — no separate migration/backfill script needed. This only
+            # succeeds once langchain_pg_embedding exists (i.e. after at least one
+            # document has been ingested) — harmless no-op error otherwise, and it
+            # lands on the next restart after the first ingestion.
+            "ALTER TABLE langchain_pg_embedding ADD COLUMN IF NOT EXISTS content_tsv tsvector "
+            "GENERATED ALWAYS AS (to_tsvector('english', coalesce(document, ''))) STORED",
+            "CREATE INDEX IF NOT EXISTS idx_langchain_pg_embedding_content_tsv "
+            "ON langchain_pg_embedding USING GIN (content_tsv)",
         ]:
             try:
                 await conn.execute(text(stmt))
             except Exception as e:
                 print(f"Migration error for '{stmt}': {e}")
+
+    # Load the persisted LLM/vision preference (if any) into the in-memory
+    # globals before serving traffic, so a restart doesn't silently reset a
+    # previously-chosen provider back to the "aws_nova_pro" default.
+    try:
+        async with AsyncSessionLocal() as session:
+            row = await session.get(AiPreferenceEntity, 1)
+            if row:
+                state.GLOBAL_LLM_PREFERENCE = row.llm_model
+                state.GLOBAL_VISION_PREFERENCE = row.vision_model
+    except Exception as e:
+        print(f"Failed to load persisted AI preference, using defaults: {e}")
+
     await start_kafka_consumers()
 
 app.include_router(workflow_router, prefix="/api/ai/workflow", tags=["workflow"])

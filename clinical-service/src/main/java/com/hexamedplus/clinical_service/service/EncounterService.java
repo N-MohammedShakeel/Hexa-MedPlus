@@ -5,11 +5,15 @@ import com.hexamedplus.clinical_service.entity.EncounterEntity;
 import com.hexamedplus.clinical_service.repository.EncounterRepository;
 import com.hexamedplus.clinical_service.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -18,6 +22,31 @@ public class EncounterService {
 
     private final EncounterRepository encounterRepository;
     private final PatientRepository patientRepository;
+
+    // Legal encounter status graph. Nothing in this codebase previously validated
+    // that a status change made sense given the encounter's *current* status —
+    // any string could be written from any state via the generic /status endpoint
+    // (e.g. a freshly created encounter could jump straight to BILLED, archiving
+    // the patient, with one call). Every status-changing method below now checks
+    // against this map before writing.
+    private static final Map<String, Set<String>> LEGAL_TRANSITIONS = Map.of(
+            "IN_PROGRESS", Set.of("CODING_PENDING"),
+            "CODING_PENDING", Set.of("CODING_COMPLETE"),
+            "CODING_COMPLETE", Set.of("CODING_REVISION", "BILLING_READY"),
+            "CODING_REVISION", Set.of("CODING_COMPLETE"),
+            "BILLING_READY", Set.of("BILLED"),
+            "BILLED", Set.of()
+    );
+
+    private void assertLegalTransition(String from, String to) {
+        if (from != null && from.equals(to)) {
+            return; // idempotent no-op re-write of the same status — harmless, allow
+        }
+        if (!LEGAL_TRANSITIONS.getOrDefault(from, Set.of()).contains(to)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Illegal encounter status transition: " + from + " -> " + to);
+        }
+    }
 
     private EncounterDto.Response mapToResponse(EncounterEntity entity) {
         return EncounterDto.Response.builder()
@@ -119,6 +148,7 @@ public class EncounterService {
                 .flatMap(optional -> {
                     if (optional.isPresent()) {
                         EncounterEntity entity = optional.get();
+                        assertLegalTransition(entity.getStatus(), status);
                         entity.setStatus(status);
 
                         // A resubmission always closes out the current revision cycle —
@@ -211,6 +241,7 @@ public class EncounterService {
                 .flatMap(optional -> {
                     if (optional.isPresent()) {
                         EncounterEntity entity = optional.get();
+                        assertLegalTransition(entity.getStatus(), "CODING_PENDING");
                         entity.setSignedAt(java.time.LocalDateTime.now());
                         entity.setSignedBy(signedBy);
                         entity.setStatus("CODING_PENDING");
@@ -229,6 +260,7 @@ public class EncounterService {
                 .flatMap(optional -> {
                     if (optional.isPresent()) {
                         EncounterEntity entity = optional.get();
+                        assertLegalTransition(entity.getStatus(), "CODING_REVISION");
                         entity.setStatus("CODING_REVISION");
                         entity.setRevisionNote(revisionNote);
                         return Mono.fromCallable(() -> encounterRepository.save(entity))

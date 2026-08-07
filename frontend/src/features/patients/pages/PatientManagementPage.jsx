@@ -14,6 +14,7 @@ import AddPatientModal from "../components/AddPatientModal";
 import { logPatientArchived, logRecordExported } from "../../../services/api/auditService";
 import { useConfirm } from "../../../contexts/ConfirmContext";
 import { notifySuccess } from "../../../common/utils/toast";
+import { ROLES } from "../../../common/constants/permissions";
 
 // Priority: higher = more urgent to surface in the status badge
 const CODING_STATUS_PRIORITY = {
@@ -39,6 +40,11 @@ export default function PatientManagementPage() {
   const allPatients = useSelector(selectAllPatients);
   const status      = useSelector(selectPatientStatus);
   const { encounters } = useAllEncounters();
+  const { user } = useSelector((state) => state.auth);
+  // Registration/demographics edits are physician-or-admin work on the backend
+  // (RoleAuthorizationFilter) — hidden here too so coders aren't shown controls
+  // that would just 403 on click.
+  const canEditPatients = user?.role === ROLES.PHYSICIAN || user?.role === ROLES.ADMIN;
 
   const [searchTerm,      setSearchTerm]      = useState("");
   const [isAddModalOpen,  setIsAddModalOpen]  = useState(false);
@@ -157,9 +163,11 @@ export default function PatientManagementPage() {
             Manage and view all patient records
           </p>
         </div>
-        <Button icon={Plus} onClick={() => setIsAddModalOpen(true)}>
-          Add Patient
-        </Button>
+        {canEditPatients && (
+          <Button icon={Plus} onClick={() => setIsAddModalOpen(true)}>
+            Add Patient
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -275,28 +283,34 @@ export default function PatientManagementPage() {
                     {/* Actions */}
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={e => startEditPatient(patient, e)}
-                          className="p-1.5 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors"
-                          title="Edit Department & Primary Diagnosis"
-                        >
-                          <Pencil className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
-                        </button>
-                        <button
-                          onClick={async e => {
-                            e.stopPropagation();
-                            const ok = await confirm(`Archive ${patient.name}? They will be removed from the active workspace and can be restored later from Records.`);
-                            if (ok) {
-                              dispatch(archivePatient(patient.id));
-                              logPatientArchived(patient.mrn, patient.name);
-                              notifySuccess(`${patient.name} archived`);
-                            }
-                          }}
-                          className="p-1.5 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors"
-                          title="Archive Patient"
-                        >
-                          <Archive className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
-                        </button>
+                        {canEditPatients ? (
+                          <>
+                            <button
+                              onClick={e => startEditPatient(patient, e)}
+                              className="p-1.5 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors"
+                              title="Edit Department & Primary Diagnosis"
+                            >
+                              <Pencil className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
+                            </button>
+                            <button
+                              onClick={async e => {
+                                e.stopPropagation();
+                                const ok = await confirm(`Archive ${patient.name}? They will be removed from the active workspace and can be restored later from Records.`);
+                                if (ok) {
+                                  dispatch(archivePatient(patient.id));
+                                  logPatientArchived(patient.mrn, patient.name);
+                                  notifySuccess(`${patient.name} archived`);
+                                }
+                              }}
+                              className="p-1.5 rounded-6 hover:bg-neutral-200 dark:hover:bg-slate-700 transition-colors"
+                              title="Archive Patient"
+                            >
+                              <Archive className="w-4 h-4 text-neutral-600 dark:text-slate-400" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-neutral-400 dark:text-slate-600">—</span>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -11,6 +11,7 @@ from app.utils.logger import log_info, log_warn, log_error
 from app.core.redactor import redact_text, unmask_json
 from tavily import TavilyClient
 from app.core.rag import search_clinical_protocols
+from app.core.json_utils import extract_first_json_object
 
 def get_llm():
     pref = state.GLOBAL_LLM_PREFERENCE
@@ -93,11 +94,12 @@ def robust_json_invoke(prompt_template, llm, parser, input_dict, fallback_dict):
 
             # Look for markdown codeblock json block or first balanced json object
             match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
-            if not match:
-                match = re.search(r'(\{.*\})', raw_text, re.DOTALL)
-                
             if match:
                 clean_str = match.group(1).strip()
+            else:
+                clean_str = extract_first_json_object(raw_text).strip()
+
+            if clean_str:
                 return json.loads(clean_str)
         except Exception as fallback_err:
             log_error(f"Regex JSON extraction failed: {str(fallback_err)}")

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ROUTES } from "../../common/constants/routes";
+import { hasPageAccess } from "../../common/constants/permissions";
 
 const sidebarItems = [
   {
@@ -78,6 +79,7 @@ const sidebarItems = [
 export default function Sidebar({ collapsed, onToggle }) {
   const { user } = useSelector((state) => state.auth);
   const location = useLocation();
+  const visibleItems = sidebarItems.filter((item) => hasPageAccess(user?.role, item.path));
 
   return (
     <aside
@@ -138,7 +140,7 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       {/* Navigation */}
       <nav className="flex-1 px-4 flex flex-col gap-2 overflow-y-auto">
-        {sidebarItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = location.pathname.startsWith(item.path);
 
           return (

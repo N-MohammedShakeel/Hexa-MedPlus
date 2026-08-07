@@ -3,6 +3,7 @@ import re
 from app.core.config import settings
 from app.utils.logger import log_info, log_warn, log_error
 import app.core.state as state
+from app.core.json_utils import extract_first_json_object
 
 GUARDRAIL_CLASSIFIER_PROMPT = """You are an AI Safety & Clinical Domain Classifier for Hexa MedPlus, a specialized medical intelligence platform.
 
@@ -39,7 +40,7 @@ async def validate_clinical_domain(user_message: str) -> tuple[bool, str]:
     prompt = GUARDRAIL_CLASSIFIER_PROMPT.format(user_message=message_clean)
 
     try:
-        if state.GLOBAL_AI_PREFERENCE == "qwen" and settings.CUSTOM_LLM_BASE_URL:
+        if state.GLOBAL_LLM_PREFERENCE == "qwen" and settings.CUSTOM_LLM_BASE_URL:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(base_url=settings.CUSTOM_LLM_BASE_URL, api_key="not-needed")
             response = await client.chat.completions.create(
@@ -55,9 +56,9 @@ async def validate_clinical_domain(user_message: str) -> tuple[bool, str]:
             raw_text = res.content if hasattr(res, 'content') else str(res)
 
         # Extract JSON block
-        match = re.search(r'(\{.*?\})', raw_text, re.DOTALL)
-        if match:
-            data = json.loads(match.group(1))
+        clean_str = extract_first_json_object(raw_text).strip()
+        if clean_str:
+            data = json.loads(clean_str)
             is_clinical = bool(data.get("is_clinical", False))
             reason = data.get("reason", "Non-clinical query")
             log_info(f"🛡️ GUARDRAIL CLASSIFIER RESULT: is_clinical={is_clinical} | Reason: {reason}")

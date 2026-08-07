@@ -26,6 +26,7 @@ async def rag_status():
             # Count documents in vector store
             doc_count = 0
             chunk_count = 0
+            hybrid_index_ready = False
             if has_vector:
                 try:
                     count_result = await conn.execute(
@@ -37,6 +38,12 @@ async def rag_status():
                         text("SELECT COUNT(DISTINCT (cmetadata->>'file_key')) FROM langchain_pg_embedding")
                     )
                     doc_count = coll_result.scalar() or 0
+
+                    tsv_result = await conn.execute(text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name = 'langchain_pg_embedding' AND column_name = 'content_tsv'"
+                    ))
+                    hybrid_index_ready = tsv_result.fetchone() is not None
                 except Exception:
                     pass  # Table doesn't exist yet (no docs ingested)
 
@@ -46,7 +53,8 @@ async def rag_status():
             "documentCount": doc_count,
             "chunkCount": chunk_count,
             "embeddingModel": "nvidia/nv-embed-v1",
-            "collectionName": "hexamed_knowledge_base"
+            "collectionName": "hexamed_knowledge_base",
+            "hybridSearchIndexReady": hybrid_index_ready
         }
     except Exception as e:
         return {

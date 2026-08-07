@@ -2,6 +2,10 @@ spring:
   config:
     activate:
       on-profile: local
+  data:
+    redis:
+      host: localhost
+      port: 6379
   cloud:
     gateway:
       routes:
@@ -9,14 +13,32 @@ spring:
           uri: http://localhost:8081
           predicates:
             - Path=/api/patients/**, /api/encounters/**, /api/notes/**, /api/analytics/**, /api/clinical/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@userKeyResolver}"
         - id: document-service
           uri: http://localhost:8082
           predicates:
             - Path=/api/documents/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@userKeyResolver}"
         - id: ai-service
           uri: http://localhost:8083
           predicates:
             - Path=/api/ai/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 10
+                key-resolver: "#{@userKeyResolver}"
       globalcors:
         cors-configurations:
           '[/**]':

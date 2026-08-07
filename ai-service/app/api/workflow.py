@@ -45,7 +45,7 @@ async def execute_workflow(request: WorkflowRequestDto, db: AsyncSession = Depen
             
         import app.core.state as state
         actor = "NVIDIA Llama 3.1"
-        if state.GLOBAL_AI_PREFERENCE == "qwen":
+        if state.GLOBAL_LLM_PREFERENCE == "qwen":
             actor = "Qwen 2.5"
             
         # Add Audit Log for Generation

@@ -11,6 +11,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -97,13 +98,34 @@ public class AnalyticsService {
                     Map.of("name", "Sun", "admissions", countByDow(allEncounters, 7))
             );
 
-            // Age distribution (still approximate without DOB)
+            // Age distribution — bucketed from each patient's actual date of birth.
+            // Patients with no recorded DOB are excluded from every bucket rather
+            // than guessed into one.
+            LocalDate today = LocalDate.now();
+            int age0to18 = 0, age19to35 = 0, age36to50 = 0, age51to70 = 0, age71plus = 0;
+            for (PatientEntity p : patientMap.values()) {
+                if (p.getDob() == null) {
+                    continue;
+                }
+                int age = Period.between(p.getDob(), today).getYears();
+                if (age <= 18) {
+                    age0to18++;
+                } else if (age <= 35) {
+                    age19to35++;
+                } else if (age <= 50) {
+                    age36to50++;
+                } else if (age <= 70) {
+                    age51to70++;
+                } else {
+                    age71plus++;
+                }
+            }
             List<Map<String, Object>> patientVisits = List.of(
-                    Map.of("name", "0-18", "patients", 120),
-                    Map.of("name", "19-35", "patients", 250),
-                    Map.of("name", "36-50", "patients", 340),
-                    Map.of("name", "51-70", "patients", 280),
-                    Map.of("name", "71+", "patients", 150)
+                    Map.of("name", "0-18", "patients", age0to18),
+                    Map.of("name", "19-35", "patients", age19to35),
+                    Map.of("name", "36-50", "patients", age36to50),
+                    Map.of("name", "51-70", "patients", age51to70),
+                    Map.of("name", "71+", "patients", age71plus)
             );
 
             return Map.of(
@@ -113,7 +135,6 @@ public class AnalyticsService {
                             "codingPending", codingPending,
                             "activeEncounters", inProgress,
                             "todayEncounterCount", todayEncounters.size(),
-                            "codingAccuracy", 96.4,
                             "clinicalAlerts", 0
                     ),
                     "charts", Map.of(

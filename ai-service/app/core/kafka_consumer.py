@@ -120,7 +120,7 @@ def _build_analysis_fields(file_key: str, mrn: str, doc_type: str, analysis_resu
         'image_width': analysis_result.get('image_width'),
         'image_height': analysis_result.get('image_height'),
         'document_id': document_id,
-        'model_used': 'meta/llama-3.2-90b-vision-instruct'
+        'model_used': analysis_result.get('_model_used', 'meta/llama-3.2-90b-vision-instruct')
     }
 
 async def _call_vision_api(file_key: str, file_url: str = None, doc_type: str = '') -> dict:
@@ -188,10 +188,21 @@ async def _call_vision_api(file_key: str, file_url: str = None, doc_type: str = 
         return None
 
 
+# Minimum native (embedded, selectable) text characters on a page before we
+# trust it over re-OCR'ing via Vision AI. Mirrors document-service's own
+# LOW_CONFIDENCE_THRESHOLD (PdfParserService.java) so both services agree on
+# what counts as "this page already has real text" vs. "this is probably a
+# scanned/image-only page that still needs Vision AI."
+NATIVE_TEXT_MIN_CHARS = 150
+
 async def _process_vision_api_pdf_stream(file_key: str, file_url: str):
     """
     For PDF files: yield (page_num, total_pages, analysis_result) progressively.
-    page_num=0 means initialization.
+    page_num=0 means initialization. Pages with sufficient native (embedded)
+    text skip the expensive Vision AI OCR call entirely and use that text
+    directly — most PDFs are a mix of native-text pages and scanned/image
+    pages, and re-OCR'ing a page that already has selectable text wastes an
+    AI call and can only make the extracted text worse.
     """
     if not file_url:
         return
@@ -215,6 +226,22 @@ async def _process_vision_api_pdf_stream(file_key: str, file_url: str):
 
         for page_num in range(page_count):
             page = doc[page_num]
+
+            native_text = (page.get_text() or '').strip()
+            if len(native_text) >= NATIVE_TEXT_MIN_CHARS:
+                log_info(f"Page {page_num+1} of '{file_key}' has {len(native_text)} native text chars — skipping Vision AI OCR.")
+                result = {
+                    "ocr_extraction": {"extracted_text": native_text, "blurry_text_regions": []},
+                    "image_metadata": {},
+                    "clinical_findings": [],
+                    "image_quality": {},
+                    "image_width": None,
+                    "image_height": None,
+                    "_model_used": "native-pdf-text-extraction"
+                }
+                yield (page_num + 1, page_count, result)
+                continue
+
             mat = fitz.Matrix(1.5, 1.5)  # 150 DPI
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img_bytes = pix.tobytes('png')
@@ -318,6 +345,7 @@ async def consume_documents():
     await consumer.start()
     try:
         async for msg in consumer:
+            file_key = None
             try:
                 data = json.loads(msg.value.decode('utf-8'))
                 file_key = data.get('fileKey')
@@ -455,6 +483,8 @@ async def consume_documents():
                                             model_meta = result.get('image_metadata')
                                             meta['modality'] = model_meta.get('modality', '')
                                             meta['body_part_or_document_type'] = model_meta.get('body_part_or_document_type', '')
+                                        if page_num == 1 and result.get('_model_used'):
+                                            existing.model_used = result.get('_model_used')
 
                                         # Merge this page's identity fields in — only filling whatever
                                         # earlier pages didn't already find, since a multi-page PDF's
@@ -522,7 +552,7 @@ async def consume_documents():
                             'blur_doctor_inputs': [],
                             'image_width': None,
                             'image_height': None,
-                            'model_used': 'text-structuring-llama',
+                            'model_used': (structured or {}).get('_model_used', 'text-structuring-llama'),
                             'identity_check_status': identity_result['status'],
                             'identity_mismatches': identity_result['mismatches'],
                         }
@@ -542,8 +572,21 @@ async def consume_documents():
                     log_info(f"Text document {file_key} had no extractable text; marking COMPLETED.")
                     await _update_document_status(file_key, "COMPLETED")
 
+                else:
+                    # File extension matched none of image/PDF/text — nothing above ever
+                    # ran, so without this the document would sit in PROCESSING forever
+                    # with no status update at all.
+                    log_error(f"Document {file_key} (type={doc_type}) matched no known processing branch; marking FAILED.")
+                    await _update_document_status(file_key, "FAILED")
+
             except Exception as e:
                 log_error(f"Error processing document.parsed event: {e}")
+                # Whatever stage failed (JSON decode, field extraction, RAG ingestion —
+                # the branches below this each already handle their own failures), the
+                # document must still get a terminal status instead of being left stuck
+                # in PROCESSING/AI_PROCESSING forever with no recovery path.
+                if file_key:
+                    await _update_document_status(file_key, "FAILED")
     finally:
         await consumer.stop()
 

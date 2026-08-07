@@ -22,6 +22,7 @@ import CoreWorkspacePage from "./features/clinical/pages/CoreWorkspacePage";
 import EncounterWorkspacePage from "./features/encounters/pages/EncounterWorkspacePage";
 import ChatPage from "./features/chat/pages/ChatPage";
 import BillingPage from "./features/billing/pages/BillingPage";
+import ProtectedRoute from "./common/components/ProtectedRoute";
 
 function App() {
   const theme = useSelector(selectTheme);
@@ -50,7 +51,7 @@ function App() {
         </Route>
 
         {/* Protected Routes */}
-        <Route element={<MainLayout />}>
+        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/patients" element={<PatientManagementPage />} />
           <Route path="/documents" element={<DocumentWorkspacePage />} />

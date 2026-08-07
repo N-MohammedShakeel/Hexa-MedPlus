@@ -53,14 +53,25 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         try {
             SecretKey key = Keys.hmacShaKeyFor(secretKey.getBytes());
 
-            // Validate token and extract username
-            String username = Jwts.parser().verifyWith(key).build()
-                    .parseSignedClaims(token).getPayload().getSubject();
+            // Validate token and extract username + role
+            var claims = Jwts.parser().verifyWith(key).build()
+                    .parseSignedClaims(token).getPayload();
+            String username = claims.getSubject();
+            String role = claims.get("role", String.class);
 
-            // Pass username downstream
-            ServerHttpRequest modifiedRequest = exchange.getRequest().mutate()
-                    .header("X-User-Name", username)
-                    .build();
+            // Pass identity downstream. Every internal service trusts these headers
+            // outright rather than re-validating the JWT themselves — safe only
+            // because this filter (running first, order=-1) is the sole path
+            // through which requests reach clinical-service/document-service in
+            // production. The per-service ports exposed in docker-compose are for
+            // local dev convenience; a real deployment must firewall them off from
+            // anything but the gateway.
+            ServerHttpRequest.Builder requestBuilder = exchange.getRequest().mutate()
+                    .header("X-User-Name", username);
+            if (role != null) {
+                requestBuilder.header("X-User-Role", role);
+            }
+            ServerHttpRequest modifiedRequest = requestBuilder.build();
 
             return chain.filter(exchange.mutate().request(modifiedRequest).build());
 

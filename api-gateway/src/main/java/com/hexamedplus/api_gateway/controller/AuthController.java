@@ -86,7 +86,7 @@ public class AuthController {
             if (userDetails.password.equals(password)) {
                 // 30 days or 1 day
                 long expirationMs = rememberMe ? 30L * 24L * 60L * 60L * 1000L : 24L * 60L * 60L * 1000L;
-                String token = generateJwtToken(username, expirationMs);
+                String token = generateJwtToken(username, userDetails.role, expirationMs);
                 Map<String, String> responsePayload = new HashMap<>();
                 responsePayload.put("token", token);
                 responsePayload.put("username", username);
@@ -107,11 +107,12 @@ public class AuthController {
         return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
-    private String generateJwtToken(String username, long customExpirationMs) {
+    private String generateJwtToken(String username, String role, long customExpirationMs) {
         Key key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
 
         return Jwts.builder()
                 .subject(username)
+                .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date((new Date()).getTime() + customExpirationMs))
                 .signWith(key)
