@@ -277,7 +277,9 @@ async def consume_notes():
     consumer = AIOKafkaConsumer(
         'clinical-notes',
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-        group_id="ai-engine-python-group"
+        group_id="ai-engine-python-group",
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
     )
     await consumer.start()
     try:
@@ -334,6 +336,8 @@ async def consume_documents():
         'document.parsed',
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
         group_id="ai-engine-document-group",
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
         # Vision AI calls (NVIDIA NIM) can take 5-10 min for large images.
         # Default max_poll_interval_ms=300000 (5 min) causes the coordinator to
         # evict this consumer mid-processing and cancel the in-flight HTTP request.
@@ -595,7 +599,9 @@ async def consume_guideline_retirements():
     consumer = AIOKafkaConsumer(
         'guideline.retired',
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-        group_id="ai-engine-guideline-lifecycle-group"
+        group_id="ai-engine-guideline-lifecycle-group",
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
     )
     await consumer.start()
     try:
