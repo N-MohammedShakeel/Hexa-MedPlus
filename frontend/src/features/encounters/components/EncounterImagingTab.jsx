@@ -100,7 +100,9 @@ export default function EncounterImagingTab({
         <div className="max-w-3xl mx-auto space-y-4">
             {(() => {
                 const allImagingResults = visionResults.filter(r =>
-                    ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType)
+                    ['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType) ||
+                    Boolean(r.imageMetadata?.modality) ||
+                    (r.fileKey && /\.(png|jpg|jpeg|bmp|webp|dcm|dicom)$/i.test(r.fileKey))
                 );
                 if (visionLoading) return (
                     <div className="h-full flex items-center justify-center text-center p-12">

@@ -176,7 +176,8 @@ export default function EncounterLabsTab({
                 )
             ) : (() => {
                 const allLabResults = visionResults.filter(r =>
-                    r.documentType === 'LAB_REPORT' || (!r.documentType && !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType))
+                    r.documentType === 'LAB_REPORT' ||
+                    !['IMAGING','XRAY','MRI','CT_SCAN','DICOM'].includes(r.documentType)
                 );
                 if (visionLoading) return (
                     <div className="p-8 text-center text-neutral-500 dark:text-neutral-400 flex items-center justify-center gap-2">
