@@ -1,0 +1,274 @@
+================================================================================
+HEXA MEDPLUS CLINICAL PRACTICE GUIDELINE & EVIDENCE-BASED PROTOCOL
+Document Ref: CPG-ENDO-NEURO-2026-V4.2
+Category: Clinical Protocol / Hospital Guideline
+Applicability: Hospital-Wide (Endocrinology, Neurology, Cardiology, Internal Medicine)
+Version: 4.2 | Effective Date: August 2026 | Review Cycle: Annual
+================================================================================
+
+TITLE: COMPREHENSIVE CLINICAL MANAGEMENT OF TYPE 2 DIABETES MELLITUS WITH 
+       CEREBROVASCULAR DISEASE, HYPERLIPIDEMIA, AND ACUTE ISCHEMIC RISK
+
+================================================================================
+TABLE OF CONTENTS (10 MODULES)
+================================================================================
+1. SECTION 1: Scope, Objectives, Clinical Governance & Target Population
+2. SECTION 2: Initial Diagnostic Workup, Staging & Risk Stratification
+3. SECTION 3: Glycemic Management & Pharmacotherapy Decision Trees
+4. SECTION 4: Lipid Management & Atherosclerotic Cardiovascular Risk Reduction
+5. SECTION 5: Acute Ischemic Stroke & Transient Ischemic Attack (TIA) Pathways
+6. SECTION 6: Neuroimaging Protocols (CT, MRI Brain, MRA & Carotid Doppler)
+7. SECTION 7: Antithrombotic & Anticoagulation Protocols
+8. SECTION 8: Laboratory Monitoring Protocols & Renal Safety Dose Adjustments
+9. SECTION 9: Inpatient Glycemic Management & Post-Acute Discharge Pathways
+10. SECTION 10: Clinical Documentation, Audit Trails & ICD-10 / CPT Coding Matrix
+
+================================================================================
+SECTION 1: SCOPE, OBJECTIVES, CLINICAL GOVERNANCE & TARGET POPULATION
+================================================================================
+1.1 Objective:
+This clinical protocol establishes standardized, evidence-based guidelines for 
+the diagnosis, glycemic control, lipid-lowering therapy, neuroimaging evaluation, 
+and secondary prevention for adult patients presenting with Type 2 Diabetes 
+Mellitus (T2DM) complicated by established or suspected Cerebrovascular Disease 
+(CVD), Acute Ischemic Stroke (AIS), Transient Ischemic Attack (TIA), and mixed 
+dyslipidemia.
+
+1.2 Target Patient Population:
+- Adult patients (age >= 18 years) with confirmed or newly diagnosed T2DM.
+- Patients presenting with acute neurological deficits, focal motor weakness, 
+  transient ischemic symptoms, or altered sensory perception.
+- Diabetics with co-existing atherosclerotic cardiovascular disease (ASCVD), 
+  essential hypertension, and hypercholesterolemia.
+
+1.3 Clinical Decision Support Integration:
+All clinical pathways in this protocol are integrated with the Hexa MedPlus AI 
+Decision Support System. Ingested protocol knowledge directly governs AI 
+diagnostic recommendations, ICD-10 code extraction, and safety contraindication 
+alerts during encounter documentation.
+
+================================================================================
+SECTION 2: INITIAL DIAGNOSTIC WORKUP, STAGING & RISK STRATIFICATION
+================================================================================
+2.1 Mandatory Diagnostic Battery upon Presentation:
+Every patient evaluated under this protocol must receive the following core 
+diagnostic battery within 2 hours of clinical admission or presentation:
+  a. Venous Blood Glucose & Point-of-Care Capillary Glucose
+  b. Hemoglobin A1c (HbA1c) automated high-performance liquid chromatography
+  c. Fasting Lipid Panel: Total Cholesterol, LDL-C, HDL-C, Triglycerides
+  d. Comprehensive Metabolic Panel: Serum Creatinine, eGFR, Blood Urea Nitrogen 
+     (BUN), Serum Sodium, Potassium, Chloride, Bicarbonate
+  e. Urinalysis with Urine Albumin-to-Creatinine Ratio (uACR)
+  f. 12-Lead Electrocardiogram (ECG) to screen for silent myocardial ischemia, 
+     atrial fibrillation, and left ventricular hypertrophy (LVH).
+
+2.2 Glycemic Diagnostic Thresholds (ADA / EASD Standard):
+- Normal: Fasting Plasma Glucose < 100 mg/dL, HbA1c < 5.7%
+- Prediabetes / Impaired Fasting Glucose: FPG 100-125 mg/dL, HbA1c 5.7% - 6.4%
+- Diabetes Mellitus: FPG >= 126 mg/dL (confirmed on repeat), HbA1c >= 6.5%, 
+  or Random Plasma Glucose >= 200 mg/dL with classic symptoms (polyuria, polydipsia).
+
+2.3 Cardiovascular & Cerebrovascular Risk Categorization:
+- VERY HIGH RISK: T2DM with established ASCVD (prior stroke, myocardial infarction, 
+  peripheral arterial disease) or target organ damage (eGFR < 60 mL/min/1.73m2, 
+  uACR > 300 mg/g). Target LDL-C: < 55 mg/dL with >= 50% reduction from baseline.
+- HIGH RISK: T2DM duration >= 10 years with at least one additional risk factor 
+  (hypertension, smoking, dyslipidemia) without target organ damage. Target LDL-C: < 70 mg/dL.
+
+================================================================================
+SECTION 3: GLYCEMIC MANAGEMENT & PHARMACOTHERAPY DECISION TREES
+================================================================================
+3.1 Glycemic Targets:
+- Standard Target: HbA1c < 7.0% (Fasting BG 80-130 mg/dL, Postprandial < 180 mg/dL).
+- Relaxed Target (Frailty, Elderly, High Hypoglycemia Risk, History of Severe Stroke): 
+  HbA1c < 7.5% - 8.0%.
+
+3.2 First-Line Pharmacotherapy:
+- Metformin Hydrochloride:
+  * Initial dose: 500 mg orally once daily with meals, titrating weekly to 
+    1000 mg BID (maximum 2000 mg/day).
+  * Contraindications: eGFR < 30 mL/min/1.73m2, acute metabolic acidosis, severe 
+    hepatic impairment, or hemodynamic instability.
+  * Hold Metformin 48 hours prior to and post iodinated radiocontrast administration.
+
+3.3 Second-Line Combination Therapy (Cardio-Renal Protection Preference):
+For patients with established ASCVD or high stroke risk, add:
+- GLP-1 Receptor Agonist (GLP-1 RA) with proven cardiovascular benefit 
+  (Semaglutide or Dulaglutide) to reduce secondary ischemic stroke and major adverse 
+  cardiovascular events (MACE).
+- SGLT-2 Inhibitor (Empagliflozin 10-25 mg daily or Dapagliflozin 10 mg daily) if 
+  co-existing heart failure (HFrEF/HFpEF) or chronic kidney disease (uACR > 30 mg/g).
+
+3.4 Basal Insulin Initiation Algorithm:
+Initiate basal insulin (Glargine U-100 or Degludec) when HbA1c >= 9.0% or symptomatic 
+hyperglycemia with catabolism is present. Start at 10 units subcutaneously once daily 
+at bedtime (or 0.1-0.2 units/kg/day), titrating by 2 units every 3 days until fasting 
+blood glucose is consistently within target range (80-130 mg/dL).
+
+================================================================================
+SECTION 4: LIPID MANAGEMENT & ATHEROSCLEROTIC CARDIOVASCULAR RISK REDUCTION
+================================================================================
+4.1 Statin Intensity Protocol:
+All patients with T2DM aged 40-75 years with co-existing vascular disease require 
+High-Intensity Statin Therapy regardless of baseline lipid levels:
+  * Atorvastatin 40 mg to 80 mg orally daily, OR
+  * Rosuvastatin 20 mg to 40 mg orally daily.
+Goal: Achieve >= 50% reduction in baseline LDL-C and absolute LDL-C < 70 mg/dL 
+(< 55 mg/dL for recurrent ischemic events).
+
+4.2 Escalation Protocol for Refractory Hyperlipidemia:
+- If LDL-C remains >= 70 mg/dL despite maximum tolerated high-intensity statin 
+  after 6-12 weeks:
+  * Step 1: Add Ezetimibe 10 mg orally daily.
+  * Step 2: If LDL-C remains above target in very high-risk secondary stroke 
+    prevention, add PCSK9 inhibitor (Evolocumab 140 mg SC every 2 weeks or 
+    Alirocumab 75-150 mg SC every 2 weeks).
+
+4.3 Hypertriglyceridemia Management:
+- Fasting Triglycerides 150-499 mg/dL: Optimize glycemic control, implement lifestyle 
+  dietary restriction, intensify statin therapy.
+- Fasting Triglycerides >= 500 mg/dL: Initiate Fenofibrate 134-200 mg daily or 
+  Icosapent Ethyl 2 g BID to mitigate acute pancreatitis risk. (Avoid Gemfibrozil 
+  co-administration with statins due to rhabdomyolysis risk).
+
+================================================================================
+SECTION 5: ACUTE ISCHEMIC STROKE & TRANSIENT ISCHEMIC ATTACK (TIA) PATHWAYS
+================================================================================
+5.1 Hyperacute Triage Protocol (Time is Brain):
+- Onset < 4.5 Hours: Immediate Code Stroke activation, urgent non-contrast CT Brain, 
+  fingerstick glucose, and evaluation for intravenous thrombolysis (IV Alteplase 
+  0.9 mg/kg or Tenecteplase 0.25 mg/kg).
+- Onset 4.5 - 24 Hours: CT Angiography (CTA) + CT Perfusion / MRI Diffusion-Weighted 
+  Imaging (DWI) for mechanical thrombectomy screening in Large Vessel Occlusion (LVO).
+
+5.2 In-Hospital Secondary Stroke Assessment:
+For patients presenting beyond the acute thrombolysis window or admitted with subacute 
+cerebral ischemia:
+  * Neurological examination with NIH Stroke Scale (NIHSS) scoring documented daily.
+  * Continuous cardiac telemetry for minimum 48 hours to detect paroxysmal Atrial 
+    Fibrillation (AFib).
+  * Transthoracic Echocardiogram (TTE) with bubble study to evaluate cardioembolic 
+    source (left ventricular thrombus, patent foramen ovale).
+  * Carotid Duplex Ultrasound to quantify internal carotid artery stenosis.
+
+5.3 Blood Pressure Management in Acute Ischemic Stroke:
+- Non-thrombolysis candidates: Permissive hypertension allowed up to 220/120 mmHg 
+  for first 48 hours to maintain cerebral collateral perfusion.
+- Thrombolysis candidates: Blood pressure must be maintained strictly < 185/110 mmHg 
+  prior to thrombolytic infusion, and < 180/105 mmHg for 24 hours post-infusion using 
+  IV Labetalol or IV Nicardipine infusions.
+
+================================================================================
+SECTION 6: NEUROIMAGING PROTOCOLS (CT, MRI BRAIN, MRA & CAROTID DOPPLER)
+================================================================================
+6.1 MRI Brain Standard Stroke Protocol:
+- Sequence 1: Diffusion-Weighted Imaging (DWI) & Apparent Diffusion Coefficient (ADC) 
+  to detect acute cytotoxic edema and distinguish hyperacute ischemia from old infarcts.
+- Sequence 2: T2-Weighted Fluid-Attenuated Inversion Recovery (FLAIR) to identify 
+  subacute/chronic infarcts and periventricular white matter microvascular changes.
+- Sequence 3: T1-Weighted Spin Echo (Pre- and Post-Contrast) for anatomical staging.
+- Sequence 4: Gradient Recalled Echo (GRE) or Susceptibility-Weighted Imaging (SWI) 
+  to screen for microhemorrhages, hemorrhagic transformation, and cavernous malformations.
+
+6.2 Imaging Finding Interpretations & Action Triggers:
+- Restricted Diffusion on DWI/ADC (bright on DWI, dark on ADC): Confirms acute 
+  ischemic infarction. Initiate urgent antithrombotic therapy and neuro-monitoring.
+- Chronic Leukoaraiosis / Periventricular T2 Hyperintensities: Indicates chronic small 
+  vessel ischemic disease secondary to longstanding hypertension and microvascular diabetes.
+- Hemorrhagic Transformation (HI-1, HI-2, PH-1, PH-2): Immediate cessation of all 
+  antithrombotic, antiplatelet, and anticoagulant agents. Urgent repeat CT at 24 hours.
+
+================================================================================
+SECTION 7: ANTITHROMBOTIC & ANTICOAGULATION PROTOCOLS
+================================================================================
+7.1 Non-Cardioembolic Ischemic Stroke / High-Risk TIA:
+- Dual Antiplatelet Therapy (DAPT):
+  * Indication: Minor ischemic stroke (NIHSS <= 3) or high-risk TIA (ABCD2 score >= 4).
+  * Regimen: Aspirin 81-100 mg daily + Clopidogrel 75 mg daily (with a 300 mg loading 
+    dose of Clopidogrel on Day 1).
+  * Duration: Continue DAPT for strictly 21 to 90 days, followed by long-term 
+    single-agent antiplatelet monotherapy (Aspirin 81 mg daily or Clopidogrel 75 mg daily).
+
+7.2 Cardioembolic Stroke (Atrial Fibrillation / LV Thrombus):
+- Direct Oral Anticoagulants (DOACs) preferred over Warfarin:
+  * Apixaban 5 mg orally BID (reduce to 2.5 mg BID if >= 2 of: age >= 80, weight <= 60 kg, 
+    serum creatinine >= 1.5 mg/dL).
+  * Rivaroxaban 20 mg orally once daily with evening meal (15 mg daily if eGFR 15-49 mL/min).
+  * Timing of DOAC initiation post-stroke: Day 1-3 for TIA, Day 3-6 for minor stroke, 
+    Day 12-14 for moderate-to-severe stroke to prevent hemorrhagic conversion.
+
+================================================================================
+SECTION 8: LABORATORY MONITORING PROTOCOLS & RENAL SAFETY DOSE ADJUSTMENTS
+================================================================================
+8.1 Laboratory Surveillance Intervals:
+- Inpatient: Fasting glucose daily; basic metabolic panel every 48 hours; HbA1c on admission.
+- Post-Discharge:
+  * HbA1c: Every 3 months until target achieved (< 7.0%), then every 6 months.
+  * Lipid Panel: At 6-12 weeks post-statin adjustment, then annually.
+  * Serum Creatinine & Potassium: At 2-4 weeks after initiating ACE-Inhibitor, ARB, 
+    or SGLT-2 inhibitor.
+  * Liver Function Tests (ALT/AST): Baseline prior to high-intensity statin, repeat 
+    only if clinically symptomatic (jaundice, right upper quadrant pain, unexplained fatigue).
+
+8.2 Renal Impairment Dosage Adjustment Table:
++-------------------+--------------------+---------------------------------------+
+| Medication        | eGFR Threshold     | Action / Dose Adjustment               |
++-------------------+--------------------+---------------------------------------+
+| Metformin         | eGFR 30-44 mL/min  | Max dose 1000 mg/day; monitor q3m     |
+|                   | eGFR < 30 mL/min   | CONTRAINDICATED - Discontinue         |
+| Empagliflozin     | eGFR < 20 mL/min   | Do not initiate (renal endpoint limit)|
+| Lisinopril / ARB  | eGFR < 30 mL/min   | Reduce starting dose by 50%           |
+| Fenofibrate       | eGFR 30-59 mL/min  | Max dose 54 mg/day                    |
+|                   | eGFR < 30 mL/min   | CONTRAINDICATED                       |
++-------------------+--------------------+---------------------------------------+
+
+================================================================================
+SECTION 9: INPATIENT GLYCEMIC MANAGEMENT & POST-ACUTE DISCHARGE PATHWAYS
+================================================================================
+9.1 Inpatient Ward Protocol:
+- Target Inpatient Blood Glucose Range: 140 - 180 mg/dL (7.8 - 10.0 mmol/L).
+- Discontinue oral antihyperglycemic agents (Metformin, SGLT-2i, Sulfonylureas) 
+  during acute critical illness and unstable stroke phases.
+- Utilize Subcutaneous Basal-Bolus Insulin regimen with pre-meal rapid-acting insulin 
+  (Lispro or Aspart) and bedtime basal insulin (Glargine). Sliding-scale insulin alone 
+  is strictly discouraged as monotherapy.
+
+9.2 Multidisciplinary Post-Acute Discharge Checklist:
+  [ ] Blood Pressure controlled: Target < 130/80 mmHg with ACE-Inhibitor / ARB.
+  [ ] Lipid-lowering therapy confirmed: High-intensity statin prescribed.
+  [ ] Antiplatelet / Anticoagulation plan documented with explicit duration.
+  [ ] Diabetes management reconciled with patient and family education completed.
+  [ ] Neuro-rehabilitation evaluation (Physical Therapy, Occupational Therapy, Speech).
+  [ ] Carotid imaging results reviewed and vascular surgery referral placed if stenosis > 70%.
+  [ ] Outpatient Endocrinology and Neurology follow-up scheduled within 14-21 days.
+
+================================================================================
+SECTION 10: CLINICAL DOCUMENTATION, AUDIT TRAILS & ICD-10 / CPT CODING MATRIX
+================================================================================
+10.1 Primary ICD-10-CM Coding Matrix:
+- E11.9   : Type 2 diabetes mellitus without complications
+- E11.40  : Type 2 diabetes mellitus with diabetic neuropathy, unspecified
+- E11.51  : Type 2 diabetes mellitus with diabetic peripheral angiopathy without gangrene
+- E78.00  : Pure hypercholesterolemia, unspecified
+- E78.2   : Mixed hyperlipidemia
+- I63.9   : Cerebral infarction, unspecified (Acute Ischemic Stroke)
+- I63.50  : Cerebral infarction due to unspecified occlusion or stenosis of cerebral arteries
+- I67.82  : Cerebral ischemia (chronic small vessel ischemic disease)
+- I10     : Essential (primary) hypertension
+- G45.9   : Transient cerebral ischemic attack, unspecified
+
+10.2 Recommended CPT Procedure & Evaluation Codes:
+- 99214 / 99215 : Office or other outpatient visit for evaluation and management 
+  of an established patient with moderate to high medical decision making complexity.
+- 99222 / 99223 : Initial hospital inpatient care, per day, for evaluation and 
+  management of a patient with high complexity.
+- 70553 : Magnetic resonance imaging (MRI), brain (including brain stem); without 
+  contrast material, followed by contrast material(s) and further sequences.
+- 83036 : Hemoglobin; glycosylated (A1C).
+- 80061 : Lipid panel (Total Cholesterol, HDL, Triglycerides, calculated LDL).
+- 80053 : Comprehensive metabolic panel (CMP).
+
+================================================================================
+END OF CLINICAL PROTOCOL (CPG-ENDO-NEURO-2026-V4.2)
+Approved by: Hexa MedPlus Clinical Governance & Evidence-Based Quality Council
+================================================================================
