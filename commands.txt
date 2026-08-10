@@ -8,3 +8,12 @@ mvn clean compile jib:dockerBuild
 mvn clean compile jib:buildTar
 
 docker-compose up -d
+
+cd hexamedplus
+./scripts/aws/fetch-env-from-ssm.sh
+sudo docker compose -f docker-compose.aws.yml up -d
+
+cd hexamedplus
+git pull
+chmod +x scripts/aws/reseed-patients.sh
+./scripts/aws/reseed-patients.sh
