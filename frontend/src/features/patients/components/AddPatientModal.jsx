@@ -19,7 +19,7 @@ export default function AddPatientModal({ isOpen, onClose }) {
   const dispatch = useDispatch();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({ name: "", mrn: "", dob: "", gender: "Male" });
+  const [formData, setFormData] = useState({ name: "", dob: "", gender: "Male", status: "Outpatient" });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -27,29 +27,17 @@ export default function AddPatientModal({ isOpen, onClose }) {
   };
 
   const resetForm = () => {
-    setFormData({ name: "", mrn: "", dob: "", gender: "Male" });
+    setFormData({ name: "", dob: "", gender: "Male", status: "Outpatient" });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    const trimmedMrn = formData.mrn.trim();
-    if (trimmedMrn && (trimmedMrn.length < 5 || trimmedMrn.length > 18)) {
-      notifyError("MRN must be between 5 and 18 characters long (e.g. MRN-12345 or 12345678).");
-      return;
-    }
-
-    if (trimmedMrn && !/^[A-Za-z0-9-]+$/.test(trimmedMrn)) {
-      notifyError("MRN can only contain letters, numbers, and hyphens.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     const nameParts = formData.name.trim().split(" ");
     const firstName = nameParts[0] || "";
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-    const mrnToUse = trimmedMrn || `MRN-${Math.floor(Math.random() * 900000) + 100000}`;
+    const autoMrn = `MRN-${Math.floor(Math.random() * 900000) + 100000}`;
 
     try {
       await dispatch(addNewPatient({
@@ -57,11 +45,11 @@ export default function AddPatientModal({ isOpen, onClose }) {
         lastName,
         dob: formData.dob,
         gender: formData.gender,
-        mrn: mrnToUse,
-        status: "Active",
+        mrn: autoMrn,
+        status: formData.status,
         allergies: [],
         activeMedications: [],
-      })).unwrap();
+      }));
 
       onClose();
       resetForm();
@@ -78,17 +66,27 @@ export default function AddPatientModal({ isOpen, onClose }) {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-slate-100 mb-4 pb-2 border-b border-neutral-200 dark:border-slate-700">Patient Demographics</h3>
+          <p className="text-xs text-neutral-500 dark:text-slate-400 mb-4">A unique MRN will be auto-generated for this patient upon registration.</p>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <Input label="Full Name" name="name" value={formData.name} onChange={handleChange} required />
             </div>
-            <Input label="MRN (Optional)" name="mrn" value={formData.mrn} onChange={handleChange} placeholder="e.g. MRN-102948 (5-18 chars)" />
             <Input label="Date of Birth" type="date" name="dob" value={formData.dob} onChange={handleChange} max={todayStr} required />
             <div>
               <label className="block text-xs font-semibold text-neutral-800 dark:text-slate-300 mb-1.5">Gender</label>
               <select name="gender" value={formData.gender} onChange={handleChange}
                 className="w-full py-2.5 px-3 bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-600 rounded-lg text-sm text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option>Male</option><option>Female</option><option>Other</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-semibold text-neutral-800 dark:text-slate-300 mb-1.5">Admission Type</label>
+              <select name="status" value={formData.status} onChange={handleChange}
+                className="w-full py-2.5 px-3 bg-white dark:bg-slate-800 border border-neutral-300 dark:border-slate-600 rounded-lg text-sm text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <option value="Inpatient">Inpatient (Admitted — overnight bed)</option>
+                <option value="Outpatient">Outpatient (Clinic / Day visit)</option>
+                <option value="Emergency">Emergency / Under Observation</option>
+                <option value="CCU Admitted">CCU Admitted (Critical Care)</option>
               </select>
             </div>
           </div>

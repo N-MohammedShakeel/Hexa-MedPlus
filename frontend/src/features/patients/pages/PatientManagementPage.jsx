@@ -55,7 +55,7 @@ export default function PatientManagementPage() {
   const [editingPatientId, setEditingPatientId] = useState(null); // patient.id whose edit popover is open
   const [editDept,        setEditDept]        = useState("");
   const [editDiagnosis,   setEditDiagnosis]   = useState("");
-  const [editStatus,      setEditStatus]      = useState("Active");
+  const [editStatus,      setEditStatus]      = useState("Outpatient");
   const [isSavingEdit,    setIsSavingEdit]    = useState(false);
   const itemsPerPage = 10;
   const confirm = useConfirm();
@@ -67,7 +67,7 @@ export default function PatientManagementPage() {
     setEditingPatientId(patient.id);
     setEditDept(patient.department || DEPARTMENT_OPTIONS[0]);
     setEditDiagnosis(patient.primaryDiagnosis === 'Pending Review' ? '' : (patient.primaryDiagnosis || ''));
-    setEditStatus(patient.status || "Active");
+    setEditStatus(patient.status || "Outpatient");
   };
 
   const saveEditPatient = async (e) => {
@@ -185,8 +185,8 @@ export default function PatientManagementPage() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {[
-            { v: departmentFilter, set: setDepartmentFilter, opts: ["All Departments","Cardiology","Endocrinology","Pulmonology","Oncology","Neurology","General Medicine"] },
-            { v: statusFilter,     set: setStatusFilter,     opts: ["All Status","Active","Inactive"] },
+            { v: departmentFilter, set: setDepartmentFilter, opts: ["All Departments","Cardiology","Endocrinology","Pulmonology","Oncology","Neurology","General Medicine","Emergency","Nephrology","Dermatology"] },
+            { v: statusFilter,     set: setStatusFilter,     opts: ["All Status","Inpatient","Outpatient","Emergency","CCU Admitted","Under Observation","Admitted","Discharged"] },
             { v: genderFilter,     set: setGenderFilter,     opts: ["All Genders","Male","Female"] },
           ].map((f, i) => (
             <select key={i} value={f.v} onChange={e => f.set(e.target.value)}
@@ -248,7 +248,24 @@ export default function PatientManagementPage() {
 
                     {/* Patient Status */}
                     <td className="px-4 py-3">
-                      <StatusBadge status={patient.status === 'Active' ? 'success' : 'neutral'} label={patient.status} />
+                      {(() => {
+                        const s = patient.status;
+                        const statusMap = {
+                          'Inpatient':          'bg-blue-50   text-blue-700   border-blue-200   dark:bg-blue-500/10   dark:text-blue-400   dark:border-blue-500/30',
+                          'Admitted':           'bg-blue-50   text-blue-700   border-blue-200   dark:bg-blue-500/10   dark:text-blue-400   dark:border-blue-500/30',
+                          'CCU Admitted':       'bg-red-50    text-red-700    border-red-200    dark:bg-red-500/10    dark:text-red-400    dark:border-red-500/30',
+                          'Emergency':          'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/30',
+                          'Under Observation':  'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/30',
+                          'Outpatient':         'bg-green-50  text-green-700  border-green-200  dark:bg-green-500/10  dark:text-green-400  dark:border-green-500/30',
+                          'Discharged':         'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600',
+                        };
+                        const cls = statusMap[s] || 'bg-neutral-100 text-neutral-600 border-neutral-300 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600';
+                        return (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>
+                            {s || 'Unknown'}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Primary Diagnosis */}
@@ -387,8 +404,12 @@ export default function PatientManagementPage() {
               onChange={e => setEditStatus(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-neutral-400 dark:border-slate-600 rounded-6 bg-white dark:bg-slate-900 text-neutral-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
+              <option value="Inpatient">Inpatient (Admitted)</option>
+              <option value="Outpatient">Outpatient</option>
+              <option value="Emergency">Emergency / Under Observation</option>
+              <option value="Under Observation">Under Observation</option>
+              <option value="CCU Admitted">CCU Admitted</option>
+              <option value="Discharged">Discharged</option>
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-neutral-200 dark:border-slate-700">
