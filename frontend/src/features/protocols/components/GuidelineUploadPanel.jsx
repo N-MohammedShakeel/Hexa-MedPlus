@@ -86,9 +86,7 @@ export default function GuidelineUploadPanel({ onUploadSuccess, existingProtocol
       if (expiryDate) formData.append("expiryDate", expiryDate);
 
       setUploadPhase("ingesting");
-      await axiosInstance.post(`/api/documents?jobId=${jobId}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await axiosInstance.post(`/api/documents?jobId=${jobId}`, formData);
 
       setUploadPhase("done");
       setUploadDone(true);
